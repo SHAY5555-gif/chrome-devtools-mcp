@@ -30,7 +30,6 @@ import {WaitForHelper} from './WaitForHelper.js';
 export interface TextSnapshotNode extends SerializedAXNode {
   id: string;
   children: TextSnapshotNode[];
-  value?: string;
 }
 
 export interface TextSnapshot {
