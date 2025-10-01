@@ -30,6 +30,7 @@ import {WaitForHelper} from './WaitForHelper.js';
 export interface TextSnapshotNode extends SerializedAXNode {
   id: string;
   children: TextSnapshotNode[];
+  value?: string | number;
 }
 
 export interface TextSnapshot {
@@ -326,19 +327,36 @@ export class McpContext implements Context {
     // will be used for the tree serialization and mapping ids back to nodes.
     let idCounter = 0;
     const idToNode = new Map<string, TextSnapshotNode>();
-    const assignIds = (node: SerializedAXNode): TextSnapshotNode => {
+    const assignIds = async (
+      node: SerializedAXNode,
+    ): Promise<TextSnapshotNode> => {
       const nodeWithId: TextSnapshotNode = {
         ...node,
         id: `${snapshotId}_${idCounter++}`,
-        children: node.children
-          ? node.children.map(child => assignIds(child))
-          : [],
+        children: [],
       };
+
+      // The AXNode for an option doesn't contain its value, so add it from the element.
+      if (node.role === 'option') {
+        const handle = await node.elementHandle();
+        if (handle) {
+          const valueHandle = await handle.getProperty('value');
+          const optionValue = await valueHandle.jsonValue();
+          if (optionValue) {
+            nodeWithId.value = optionValue.toString();
+          }
+        }
+      }
+
+      nodeWithId.children = node.children
+        ? await Promise.all(node.children.map(child => assignIds(child)))
+        : [];
+
       idToNode.set(nodeWithId.id, nodeWithId);
       return nodeWithId;
     };
 
-    const rootNodeWithId = assignIds(rootNode);
+    const rootNodeWithId = await assignIds(rootNode);
     this.#textSnapshot = {
       root: rootNodeWithId,
       snapshotId: String(snapshotId),
