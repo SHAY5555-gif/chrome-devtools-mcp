@@ -97,7 +97,26 @@ export const fill = defineTool({
     const handle = await context.getElementByUid(request.params.uid);
     try {
       await context.waitForEventsAfterAction(async () => {
-        await handle.asLocator().fill(request.params.value);
+        // The AXNode for an option doesn't contain its `value`. We set text content of the option as value.
+        // To fill the form, get the correct option by its text value.
+        const isSelectElement = await handle.evaluate(
+          el => el.tagName === 'SELECT',
+        );
+        if (isSelectElement) {
+          const value = await handle.evaluate((el, text) => {
+            const option = Array.from((el as HTMLSelectElement).options).find(
+              option => option.text === text,
+            );
+            if (option) {
+              return option.value;
+            }
+            return request.params.value;
+          }, request.params.value);
+
+          await handle.asLocator().fill(value);
+        } else {
+          await handle.asLocator().fill(request.params.value);
+        }
       });
       response.appendResponseLine(`Successfully filled out the element`);
       response.setIncludeSnapshot(true);
