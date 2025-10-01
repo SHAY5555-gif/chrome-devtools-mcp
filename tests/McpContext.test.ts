@@ -33,6 +33,30 @@ describe('McpContext', () => {
     });
   });
 
+  it('should include the value of an option in the text snapshot', async () => {
+    await withBrowser(async (_response, context) => {
+      const page = context.getSelectedPage();
+      await page.setContent(`
+        <!DOCTYPE html>
+        <select>
+          <option value="1">One</option>
+          <option value="2">Two</option>
+        </select>
+      `);
+      await context.createTextSnapshot();
+      const snapshot = context.getTextSnapshot();
+      assert.ok(snapshot);
+
+      const option1 = snapshot.root.children[0]?.children[0];
+      assert.strictEqual(option1?.role, 'option');
+      assert.strictEqual(option1?.value, '1');
+
+      const option2 = snapshot.root.children[0]?.children[1];
+      assert.strictEqual(option2?.role, 'option');
+      assert.strictEqual(option2?.value, '2');
+    });
+  });
+
   it('can store and retrieve performance traces', async () => {
     await withBrowser(async (_response, context) => {
       const fakeTrace1 = {} as unknown as TraceResult;
