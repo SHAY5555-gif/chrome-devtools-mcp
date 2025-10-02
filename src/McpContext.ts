@@ -272,6 +272,10 @@ export class McpContext implements Context {
     return page.getDefaultNavigationTimeout();
   }
 
+  getAXNodeByUid(uid: string) {
+    return this.#textSnapshot?.idToNode.get(uid);
+  }
+
   async getElementByUid(uid: string): Promise<ElementHandle<Element>> {
     if (!this.#textSnapshot?.idToNode.size) {
       throw new Error(
