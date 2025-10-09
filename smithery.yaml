@@ -1,0 +1,50 @@
+startCommand:
+  type: stdio
+  commandFunction: |
+    () => ({
+      command: 'node',
+      args: ['build/src/index.js'],
+      env: {
+        TRANSPORT: 'http'
+      }
+    })
+configSchema:
+  type: object
+  additionalProperties: false
+  properties:
+    browserUrl:
+      type: string
+      format: uri
+      description: 'Existing Chrome WebSocket debugging URL to connect to.'
+    headless:
+      type: boolean
+      description: 'Run Chrome in headless mode.'
+    executablePath:
+      type: string
+      description: 'Absolute path to a Chrome executable inside the container.'
+    isolated:
+      type: boolean
+      description: 'Launch Chrome with an isolated user data dir.'
+    customDevtools:
+      type: string
+      description: 'Path to a custom DevTools frontend bundle.'
+    channel:
+      type: string
+      enum: ['stable', 'beta', 'canary', 'dev']
+      description: 'Chrome channel to use when launching the bundled browser.'
+    logFile:
+      type: string
+      description: 'Optional path inside the container where debug logs should be written.'
+    viewport:
+      type: string
+      description: 'Viewport size for launched Chrome instances, for example 1280x720.'
+    proxyServer:
+      type: string
+      description: 'Proxy server definition to forward Chrome network traffic through.'
+    acceptInsecureCerts:
+      type: boolean
+      description: 'Ignore TLS certificate errors when launching Chrome.'
+exampleConfig:
+  channel: stable
+  headless: true
+  viewport: '1280x720'
