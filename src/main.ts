@@ -51,6 +51,14 @@ app.use(
 );
 app.use(express.json());
 
+interface HttpServerCacheEntry {
+  server: ChromeDevtoolsServer;
+  logDisclaimersShown: boolean;
+  mutex: Mutex;
+}
+
+const httpServerCache = new Map<string, HttpServerCacheEntry>();
+
 type CliArgs = ReturnType<typeof parseArguments>;
 
 const viewportSchema = z
@@ -113,6 +121,31 @@ function normalizeViewport(viewport?: ServerConfig['viewport']): string | undefi
     return viewport;
   }
   return `${viewport.width}x${viewport.height}`;
+}
+
+function configCacheKey(config: ServerConfig): string {
+  const normalizedEntries = Object.entries({
+    ...config,
+    viewport: normalizeViewport(config.viewport),
+  })
+    .filter(([, value]) => value !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  return JSON.stringify(normalizedEntries);
+}
+
+function shutdownHttpServers() {
+  for (const entry of httpServerCache.values()) {
+    entry.server.close();
+  }
+  httpServerCache.clear();
+}
+
+process.on('exit', shutdownHttpServers);
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    shutdownHttpServers();
+  });
 }
 
 function argsFromConfig(config: ServerConfig): CliArgs {
@@ -288,15 +321,20 @@ function createServer(config: ServerConfig): ChromeDevtoolsServer {
 }
 
 app.all('/mcp', async (req: Request, res: Response) => {
-  let server: ChromeDevtoolsServer | undefined;
   let transport: StreamableHTTPServerTransport | undefined;
+  let cacheEntry: HttpServerCacheEntry | undefined;
+  let cacheKey: string | undefined;
+  let guard: {dispose: () => void} | undefined;
+  let isNewEntry = false;
 
-  const cleanup = () => {
-    transport?.close();
-    transport = undefined;
-    server?.close();
-    server = undefined;
+  const releaseGuard = () => {
+    if (guard) {
+      guard.dispose();
+      guard = undefined;
+    }
   };
+
+  res.on('close', releaseGuard);
 
   try {
     const result = parseAndValidateConfig(req, configSchema);
@@ -306,34 +344,49 @@ app.all('/mcp', async (req: Request, res: Response) => {
     }
 
     const config = result.value;
+    cacheKey = configCacheKey(config);
+    cacheEntry = httpServerCache.get(cacheKey);
 
-    try {
-      server = createServer(config);
-    } catch (error) {
-      res.status(400).json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32602,
-          message:
-            error instanceof Error ? error.message : 'Invalid configuration provided.',
-        },
-        id: null,
-      });
-      return;
+    if (!cacheEntry) {
+      let server: ChromeDevtoolsServer;
+      try {
+        server = createServer(config);
+      } catch (error) {
+        res.status(400).json({
+          jsonrpc: '2.0',
+          error: {
+            code: -32602,
+            message:
+              error instanceof Error ? error.message : 'Invalid configuration provided.',
+          },
+          id: null,
+        });
+        return;
+      }
+
+      cacheEntry = {
+        server,
+        logDisclaimersShown: false,
+        mutex: new Mutex(),
+      };
+      httpServerCache.set(cacheKey, cacheEntry);
+      isNewEntry = true;
     }
+
+    guard = await cacheEntry.mutex.acquire();
 
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });
 
-    res.on('close', cleanup);
-
-    await server.server.connect(transport);
+    await cacheEntry.server.server.connect(transport);
     logger('Chrome DevTools MCP Server connected');
-    server.logDisclaimers();
+    if (!cacheEntry.logDisclaimersShown) {
+      cacheEntry.server.logDisclaimers();
+      cacheEntry.logDisclaimersShown = true;
+    }
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
-    cleanup();
     console.error('Error handling MCP request:', error);
     if (!res.headersSent) {
       res.status(500).json({
@@ -345,6 +398,13 @@ app.all('/mcp', async (req: Request, res: Response) => {
         id: null,
       });
     }
+
+    if (cacheKey && cacheEntry && isNewEntry && !transport) {
+      cacheEntry.server.close();
+      httpServerCache.delete(cacheKey);
+    }
+  } finally {
+    releaseGuard();
   }
 });
 
