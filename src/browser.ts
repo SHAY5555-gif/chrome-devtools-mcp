@@ -93,6 +93,8 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
   const args: LaunchOptions['args'] = [
     ...(options.args ?? []),
     '--hide-crash-restore-bubble',
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
   ];
   if (customDevTools) {
     args.push(`--custom-devtools-frontend=file://${customDevTools}`);
