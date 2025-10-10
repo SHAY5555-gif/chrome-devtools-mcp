@@ -45,4 +45,5 @@ configSchema:
 exampleConfig:
   channel: stable
   headless: true
+  isolated: true
   viewport: '1280x720'
