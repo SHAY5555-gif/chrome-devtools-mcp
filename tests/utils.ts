@@ -4,9 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import logger from 'debug';
-import type {Browser} from 'puppeteer';
 import puppeteer from 'puppeteer';
-import type {HTTPRequest, HTTPResponse} from 'puppeteer-core';
+import type {Browser, HTTPRequest, HTTPResponse} from 'puppeteer-core';
 
 import {McpContext} from '../src/McpContext.js';
 import {McpResponse} from '../src/McpResponse.js';
@@ -19,11 +18,11 @@ export async function withBrowser(
 ) {
   const {debug = false} = options;
   if (!browser) {
-    browser = await puppeteer.launch({
+    browser = (await puppeteer.launch({
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
       headless: !debug,
       defaultViewport: null,
-    });
+    })) as unknown as Browser;
   }
   const newPage = await browser.newPage();
   // Close other pages.

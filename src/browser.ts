@@ -71,7 +71,7 @@ interface McpLaunchOptions {
 }
 
 export async function launch(options: McpLaunchOptions): Promise<Browser> {
-  const {channel, executablePath, customDevTools, headless, isolated} = options;
+  const {channel, customDevTools, headless, isolated} = options;
   const profileDirName =
     channel && channel !== 'stable'
       ? `chrome-profile-${channel}`
@@ -101,6 +101,15 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
     args.push('--screen-info={3840x2160}');
   }
   let puppeteerChannel: ChromeReleaseChannel | undefined;
+  let executablePath = options.executablePath ?? process.env['PUPPETEER_EXECUTABLE_PATH'];
+  if (!executablePath) {
+    try {
+      const puppeteerFull = await import('puppeteer');
+      executablePath = puppeteerFull.executablePath();
+    } catch {
+      executablePath = undefined;
+    }
+  }
   if (!executablePath) {
     puppeteerChannel =
       channel && channel !== 'stable'
