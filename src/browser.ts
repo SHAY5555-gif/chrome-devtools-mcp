@@ -40,8 +40,6 @@ function targetFilter(target: Target): boolean {
 
 const connectOptions: ConnectOptions = {
   targetFilter,
-  // We do not expect any single CDP command to take more than 10sec.
-  protocolTimeout: 10_000,
 };
 
 export async function ensureBrowserConnected(browserURL: string) {
@@ -98,6 +96,9 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
   ];
   if (customDevTools) {
     args.push(`--custom-devtools-frontend=file://${customDevTools}`);
+  }
+  if (headless) {
+    args.push('--screen-info={3840x2160}');
   }
   let puppeteerChannel: ChromeReleaseChannel | undefined;
   if (!executablePath) {

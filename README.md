@@ -111,7 +111,7 @@ Start the dialog to add a new MCP server by running:
 /mcp add
 ```
 
-Configure the following fields and press `CTR-S` to save the configuration:
+Configure the following fields and press `CTRL+S` to save the configuration:
 
 - **Server name:** `chrome-devtools`
 - **Server Type:** `[1] Local`
@@ -280,7 +280,7 @@ The Chrome DevTools MCP server supports the following configuration option:
   - **Type:** string
 
 - **`--viewport`**
-  Initial viewport size for the Chrome instances started by the server. For example, `1280x720`
+  Initial viewport size for the Chrome instances started by the server. For example, `1280x720`. In headless mode, max size is 3840x2160px.
   - **Type:** string
 
 - **`--proxyServer`**
@@ -320,7 +320,7 @@ You can also run `npx chrome-devtools-mcp@latest --help` to see all available co
 `chrome-devtools-mcp` starts a Chrome's stable channel instance using the following user
 data directory:
 
-- Linux / MacOS: `$HOME/.cache/chrome-devtools-mcp/chrome-profile-$CHANNEL`
+- Linux / macOS: `$HOME/.cache/chrome-devtools-mcp/chrome-profile-$CHANNEL`
 - Windows: `%HOMEPATH%/.cache/chrome-devtools-mcp/chrome-profile-$CHANNEL`
 
 The user data directory is not cleared between runs and shared across
@@ -336,5 +336,5 @@ Some MCP clients allow sandboxing the MCP server using macOS Seatbelt or Linux
 containers. If sandboxes are enabled, `chrome-devtools-mcp` is not able to start
 Chrome that requires permissions to create its own sandboxes. As a workaround,
 either disable sandboxing for `chrome-devtools-mcp` in your MCP client or use
-`--connect-url` to connect to a Chrome instance that you start manually outside
+`--browser-url` to connect to a Chrome instance that you start manually outside
 of the MCP client sandbox.
