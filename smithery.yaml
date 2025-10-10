@@ -1,13 +1,11 @@
+runtime: container
+build:
+  dockerfile: Dockerfile
+  dockerBuildPath: .
 startCommand:
-  type: stdio
-  commandFunction: |
-    () => ({
-      command: 'node',
-      args: ['build/src/index.js'],
-      env: {
-        TRANSPORT: 'http'
-      }
-    })
+  type: http
+  env:
+    TRANSPORT: http
 configSchema:
   type: object
   additionalProperties: false
