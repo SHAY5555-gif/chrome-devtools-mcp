@@ -86,7 +86,7 @@ export const configSchema = z
     proxyServer: z.string().optional(),
     acceptInsecureCerts: z.boolean().optional(),
   })
-  .strict();
+  .passthrough();
 
 type ServerConfig = z.infer<typeof configSchema>;
 
