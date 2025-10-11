@@ -17,12 +17,14 @@ configSchema:
     headless:
       type: boolean
       description: 'Run Chrome in headless mode.'
+      default: true
     executablePath:
       type: string
       description: 'Absolute path to a Chrome executable inside the container.'
     isolated:
       type: boolean
       description: 'Launch Chrome with an isolated user data dir.'
+      default: true
     customDevtools:
       type: string
       description: 'Path to a custom DevTools frontend bundle.'

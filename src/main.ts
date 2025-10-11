@@ -154,15 +154,17 @@ function argsFromConfig(config: ServerConfig): CliArgs {
   if (config.browserUrl) {
     argv.push('--browserUrl', config.browserUrl);
   }
-  if (config.headless === true) {
+  const headless = config.headless ?? true;
+  if (headless) {
     argv.push('--headless');
-  } else if (config.headless === false) {
+  } else {
     argv.push('--no-headless');
   }
   if (config.executablePath) {
     argv.push('--executablePath', config.executablePath);
   }
-  if (config.isolated) {
+  const isolated = config.isolated ?? true;
+  if (isolated) {
     argv.push('--isolated');
   }
   if (config.customDevtools) {
