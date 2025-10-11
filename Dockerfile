@@ -1,6 +1,8 @@
 FROM node:22-slim AS builder
 WORKDIR /app
 
+ENV PUPPETEER_CACHE_DIR=/root/.cache/puppeteer
+
 COPY package*.json ./
 COPY scripts ./scripts
 RUN npm ci
@@ -13,6 +15,7 @@ FROM node:22-slim
 WORKDIR /app
 ENV NODE_ENV=production
 ENV TRANSPORT=http
+ENV PUPPETEER_CACHE_DIR=/root/.cache/puppeteer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fonts-liberation \
@@ -57,6 +60,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/smithery.yaml ./smithery.yaml
 COPY --from=builder /app/LICENSE ./LICENSE
+COPY --from=builder /root/.cache/puppeteer /root/.cache/puppeteer
 
 EXPOSE 8081
 CMD ["node", "build/src/index.js"]
