@@ -44,6 +44,14 @@ configSchema:
     acceptInsecureCerts:
       type: boolean
       description: 'Ignore TLS certificate errors when launching Chrome.'
+    experimentalDevtools:
+      type: boolean
+      description: 'Enable DevTools automation targets (experimental).'
+    chromeArg:
+      type: array
+      description: 'Additional command-line switches to pass to Chrome.'
+      items:
+        type: string
 exampleConfig:
   channel: stable
   headless: true
