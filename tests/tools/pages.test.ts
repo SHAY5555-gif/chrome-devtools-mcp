@@ -163,9 +163,12 @@ describe('pages', () => {
           context,
         );
 
-        assert.equal(
-          response.responseLines.at(0),
-          'Unable to navigate forward in currently selected page.',
+        assert.ok(
+          response.responseLines
+            .at(0)
+            ?.startsWith(
+              'Unable to navigate forward in currently selected page.',
+            ),
         );
         assert.ok(response.includePages);
       });
@@ -178,9 +181,10 @@ describe('pages', () => {
           context,
         );
 
-        assert.equal(
-          response.responseLines.at(0),
-          'Unable to navigate back in currently selected page.',
+        assert.ok(
+          response.responseLines
+            .at(0)
+            ?.startsWith('Unable to navigate back in currently selected page.'),
         );
         assert.ok(response.includePages);
       });

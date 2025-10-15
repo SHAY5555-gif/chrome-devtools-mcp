@@ -7,6 +7,7 @@
 import type {Dialog, ElementHandle, Page} from 'puppeteer-core';
 import z from 'zod';
 
+import type {TextSnapshotNode} from '../McpContext.js';
 import type {TraceResult} from '../trace-processing/parse.js';
 
 import type {ToolCategories} from './categories.js';
@@ -49,7 +50,7 @@ export interface Response {
   setIncludeConsoleData(value: boolean): void;
   setIncludeSnapshot(value: boolean): void;
   attachImage(value: ImageContentData): void;
-  attachNetworkRequest(url: string): void;
+  attachNetworkRequest(reqid: number): void;
 }
 
 /**
@@ -68,6 +69,7 @@ export type Context = Readonly<{
   closePage(pageIdx: number): Promise<void>;
   setSelectedPageIdx(idx: number): void;
   getElementByUid(uid: string): Promise<ElementHandle<Element>>;
+  getAXNodeByUid(uid: string): TextSnapshotNode | undefined;
   setNetworkConditions(conditions: string | null): void;
   setCpuThrottlingRate(rate: number): void;
   saveTemporaryFile(

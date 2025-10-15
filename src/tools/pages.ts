@@ -142,15 +142,16 @@ export const navigatePageHistory = defineTool({
     const options = {
       timeout: request.params.timeout,
     };
+
     try {
       if (request.params.navigate === 'back') {
         await page.goBack(options);
       } else {
         await page.goForward(options);
       }
-    } catch {
+    } catch (error) {
       response.appendResponseLine(
-        `Unable to navigate ${request.params.navigate} in currently selected page.`,
+        `Unable to navigate ${request.params.navigate} in currently selected page. ${error.message}`,
       );
     }
 

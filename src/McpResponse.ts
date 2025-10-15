@@ -24,7 +24,7 @@ import type {ImageContentData, Response} from './tools/ToolDefinition.js';
 import {paginate, type PaginationOptions} from './utils/pagination.js';
 
 interface NetworkRequestData {
-  networkRequestUrl: string;
+  networkRequestStableId: number;
   requestBody?: string;
   responseBody?: string;
 }
@@ -81,9 +81,9 @@ export class McpResponse implements Response {
     this.#includeConsoleData = value;
   }
 
-  attachNetworkRequest(url: string): void {
+  attachNetworkRequest(reqid: number): void {
     this.#attachedNetworkRequestData = {
-      networkRequestUrl: url,
+      networkRequestStableId: reqid,
     };
   }
 
@@ -98,8 +98,8 @@ export class McpResponse implements Response {
   get includeConsoleData(): boolean {
     return this.#includeConsoleData;
   }
-  get attachedNetworkRequestUrl(): string | undefined {
-    return this.#attachedNetworkRequestData?.networkRequestUrl;
+  get attachedNetworkRequestId(): number | undefined {
+    return this.#attachedNetworkRequestData?.networkRequestStableId;
   }
   get networkRequestsPageIdx(): number | undefined {
     return this.#networkRequestsOptions?.pagination?.pageIdx;
@@ -138,9 +138,9 @@ export class McpResponse implements Response {
 
     let formattedConsoleMessages: string[];
 
-    if (this.#attachedNetworkRequestData?.networkRequestUrl) {
-      const request = context.getNetworkRequestByUrl(
-        this.#attachedNetworkRequestData.networkRequestUrl,
+    if (this.#attachedNetworkRequestData?.networkRequestStableId) {
+      const request = context.getNetworkRequestById(
+        this.#attachedNetworkRequestData.networkRequestStableId,
       );
 
       this.#attachedNetworkRequestData.requestBody =
@@ -192,8 +192,12 @@ export class McpResponse implements Response {
 
     const dialog = context.getDialog();
     if (dialog) {
+      const defaultValueIfNeeded =
+        dialog.type() === 'prompt'
+          ? ` (default value: "${dialog.defaultValue()}")`
+          : '';
       response.push(`# Open dialog
-${dialog.type()}: ${dialog.message()} (default value: ${dialog.message()}).
+${dialog.type()}: ${dialog.message()}${defaultValueIfNeeded}.
 Call ${handleDialog.name} to handle it before continuing.`);
     }
 
@@ -242,7 +246,12 @@ Call ${handleDialog.name} to handle it before continuing.`);
         );
         response.push(...data.info);
         for (const request of data.items) {
-          response.push(getShortDescriptionForRequest(request));
+          response.push(
+            getShortDescriptionForRequest(
+              request,
+              context.getNetworkRequestStableId(request),
+            ),
+          );
         }
       } else {
         response.push('No requests found.');
@@ -300,12 +309,12 @@ Call ${handleDialog.name} to handle it before continuing.`);
 
   #getIncludeNetworkRequestsData(context: McpContext): string[] {
     const response: string[] = [];
-    const url = this.#attachedNetworkRequestData?.networkRequestUrl;
+    const url = this.#attachedNetworkRequestData?.networkRequestStableId;
     if (!url) {
       return response;
     }
 
-    const httpRequest = context.getNetworkRequestByUrl(url);
+    const httpRequest = context.getNetworkRequestById(url);
     response.push(`## Request ${httpRequest.url()}`);
     response.push(`Status:  ${getStatusFromRequest(httpRequest)}`);
     response.push(`### Request Headers`);
@@ -343,7 +352,7 @@ Call ${handleDialog.name} to handle it before continuing.`);
       let indent = 0;
       for (const request of redirectChain.reverse()) {
         response.push(
-          `${'  '.repeat(indent)}${getShortDescriptionForRequest(request)}`,
+          `${'  '.repeat(indent)}${getShortDescriptionForRequest(request, context.getNetworkRequestStableId(request))}`,
         );
         indent++;
       }

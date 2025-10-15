@@ -89,7 +89,7 @@ uid=1_0 RootWebArea ""
 ## Page content
 uid=1_0 RootWebArea "My test page"
   uid=1_1 StaticText "username"
-  uid=1_2 textbox "username" value="mcp" focusable focused
+  uid=1_2 textbox "username" focusable focused value="mcp"
 `,
       );
     });
@@ -150,7 +150,7 @@ Emulating: 4x slowdown`,
     });
   });
 
-  it('adds a dialog', async () => {
+  it('adds a prompt dialog', async () => {
     await withBrowser(async (response, context) => {
       const page = context.getSelectedPage();
       const dialogPromise = new Promise<void>(resolve => {
@@ -159,7 +159,7 @@ Emulating: 4x slowdown`,
         });
       });
       page.evaluate(() => {
-        alert('test');
+        prompt('message', 'default');
       });
       await dialogPromise;
       const result = await response.handle('test', context);
@@ -168,7 +168,31 @@ Emulating: 4x slowdown`,
         result[0].text,
         `# test response
 # Open dialog
-alert: test (default value: test).
+prompt: message (default value: "default").
+Call handle_dialog to handle it before continuing.`,
+      );
+    });
+  });
+
+  it('adds an alert dialog', async () => {
+    await withBrowser(async (response, context) => {
+      const page = context.getSelectedPage();
+      const dialogPromise = new Promise<void>(resolve => {
+        page.on('dialog', () => {
+          resolve();
+        });
+      });
+      page.evaluate(() => {
+        alert('message');
+      });
+      await dialogPromise;
+      const result = await response.handle('test', context);
+      await context.getDialog()?.dismiss();
+      assert.strictEqual(
+        result[0].text,
+        `# test response
+# Open dialog
+alert: message.
 Call handle_dialog to handle it before continuing.`,
       );
     });
@@ -178,15 +202,16 @@ Call handle_dialog to handle it before continuing.`,
     await withBrowser(async (response, context) => {
       response.setIncludeNetworkRequests(true);
       context.getNetworkRequests = () => {
-        return [getMockRequest()];
+        return [getMockRequest({stableId: 1}), getMockRequest({stableId: 2})];
       };
       const result = await response.handle('test', context);
       assert.strictEqual(
         result[0].text,
         `# test response
 ## Network requests
-Showing 1-1 of 1 (Page 1 of 1).
-http://example.com GET [pending]`,
+Showing 1-2 of 2 (Page 1 of 1).
+reqid=1 GET http://example.com [pending]
+reqid=2 GET http://example.com [pending]`,
       );
     });
   });
@@ -223,7 +248,10 @@ http://example.com GET [pending]`,
       context.getNetworkRequests = () => {
         return [request];
       };
-      response.attachNetworkRequest(request.url());
+      context.getNetworkRequestById = () => {
+        return request;
+      };
+      response.attachNetworkRequest(1);
 
       const result = await response.handle('test', context);
 
@@ -242,7 +270,7 @@ ${JSON.stringify({request: 'body'})}
 ${JSON.stringify({response: 'body'})}
 ## Network requests
 Showing 1-1 of 1 (Page 1 of 1).
-http://example.com POST [success - 200]`,
+reqid=1 POST http://example.com [success - 200]`,
       );
     });
   });
@@ -254,7 +282,10 @@ http://example.com POST [success - 200]`,
       context.getNetworkRequests = () => {
         return [request];
       };
-      response.attachNetworkRequest(request.url());
+      context.getNetworkRequestById = () => {
+        return request;
+      };
+      response.attachNetworkRequest(1);
       const result = await response.handle('test', context);
       assert.strictEqual(
         result[0].text,
@@ -265,7 +296,7 @@ Status:  [pending]
 - content-size:10
 ## Network requests
 Showing 1-1 of 1 (Page 1 of 1).
-http://example.com GET [pending]`,
+reqid=1 GET http://example.com [pending]`,
       );
     });
   });
@@ -330,8 +361,8 @@ describe('McpResponse network request filtering', () => {
         `# test response
 ## Network requests
 Showing 1-2 of 2 (Page 1 of 1).
-http://example.com GET [pending]
-http://example.com GET [pending]`,
+reqid=1 GET http://example.com [pending]
+reqid=1 GET http://example.com [pending]`,
       );
     });
   });
@@ -354,7 +385,7 @@ http://example.com GET [pending]`,
         `# test response
 ## Network requests
 Showing 1-1 of 1 (Page 1 of 1).
-http://example.com GET [pending]`,
+reqid=1 GET http://example.com [pending]`,
       );
     });
   });
@@ -399,11 +430,11 @@ No requests found.`,
         `# test response
 ## Network requests
 Showing 1-5 of 5 (Page 1 of 1).
-http://example.com GET [pending]
-http://example.com GET [pending]
-http://example.com GET [pending]
-http://example.com GET [pending]
-http://example.com GET [pending]`,
+reqid=1 GET http://example.com [pending]
+reqid=1 GET http://example.com [pending]
+reqid=1 GET http://example.com [pending]
+reqid=1 GET http://example.com [pending]
+reqid=1 GET http://example.com [pending]`,
       );
     });
   });
@@ -428,11 +459,11 @@ http://example.com GET [pending]`,
         `# test response
 ## Network requests
 Showing 1-5 of 5 (Page 1 of 1).
-http://example.com GET [pending]
-http://example.com GET [pending]
-http://example.com GET [pending]
-http://example.com GET [pending]
-http://example.com GET [pending]`,
+reqid=1 GET http://example.com [pending]
+reqid=1 GET http://example.com [pending]
+reqid=1 GET http://example.com [pending]
+reqid=1 GET http://example.com [pending]
+reqid=1 GET http://example.com [pending]`,
       );
     });
   });

@@ -70,3 +70,10 @@ body:
         - Windows
         - macOS
         - Linux
+
+  - type: checkboxes
+    id: provide-pr
+    attributes:
+      label: Extra checklist
+      options:
+        - label: I want to provide a PR to fix this bug

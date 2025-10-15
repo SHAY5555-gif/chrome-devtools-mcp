@@ -19,6 +19,7 @@ import type {
   PredefinedNetworkConditions,
 } from 'puppeteer-core';
 
+import type {ListenerMap} from './PageCollector.js';
 import {NetworkCollector, PageCollector} from './PageCollector.js';
 import {listPages} from './tools/pages.js';
 import {takeSnapshot} from './tools/snapshot.js';
@@ -94,26 +95,24 @@ export class McpContext implements Context {
     this.browser = browser;
     this.logger = logger;
 
-    this.#networkCollector = new NetworkCollector(
-      this.browser,
-      (page, collect) => {
-        page.on('request', request => {
+    this.#networkCollector = new NetworkCollector(this.browser, collect => {
+      return {
+        request: request => {
           collect(request);
-        });
-      },
-    );
+        },
+      } as ListenerMap;
+    });
 
-    this.#consoleCollector = new PageCollector(
-      this.browser,
-      (page, collect) => {
-        page.on('console', event => {
+    this.#consoleCollector = new PageCollector(this.browser, collect => {
+      return {
+        console: event => {
           collect(event);
-        });
-        page.on('pageerror', event => {
+        },
+        pageerror: event => {
           collect(event);
-        });
-      },
-    );
+        },
+      } as ListenerMap;
+    });
   }
 
   async #init() {
@@ -156,19 +155,8 @@ export class McpContext implements Context {
     await page.close({runBeforeUnload: false});
   }
 
-  getNetworkRequestByUrl(url: string): HTTPRequest {
-    const requests = this.getNetworkRequests();
-    if (!requests.length) {
-      throw new Error('No requests found for selected page');
-    }
-
-    for (const request of requests) {
-      if (request.url() === url) {
-        return request;
-      }
-    }
-
-    throw new Error('Request not found for selected page');
+  getNetworkRequestById(reqid: number): HTTPRequest {
+    return this.#networkCollector.getById(this.getSelectedPage(), reqid);
   }
 
   setNetworkConditions(conditions: string | null): void {
@@ -272,6 +260,10 @@ export class McpContext implements Context {
     return page.getDefaultNavigationTimeout();
   }
 
+  getAXNodeByUid(uid: string) {
+    return this.#textSnapshot?.idToNode.get(uid);
+  }
+
   async getElementByUid(uid: string): Promise<ElementHandle<Element>> {
     if (!this.#textSnapshot?.idToNode.size) {
       throw new Error(
@@ -334,6 +326,16 @@ export class McpContext implements Context {
           ? node.children.map(child => assignIds(child))
           : [],
       };
+
+      // The AXNode for an option doesn't contain its `value`.
+      // Therefore, set text content of the option as value.
+      if (node.role === 'option') {
+        const optionText = node.name;
+        if (optionText) {
+          nodeWithId.value = optionText.toString();
+        }
+      }
+
       idToNode.set(nodeWithId.id, nodeWithId);
       return nodeWithId;
     };
@@ -412,5 +414,9 @@ export class McpContext implements Context {
       networkMultiplier,
     );
     return waitForHelper.waitForEventsAfterAction(action);
+  }
+
+  getNetworkRequestStableId(request: HTTPRequest): number {
+    return this.#networkCollector.getIdForResource(request);
   }
 }
