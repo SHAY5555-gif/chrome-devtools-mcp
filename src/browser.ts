@@ -12,6 +12,7 @@ import type {
   Browser,
   ChromeReleaseChannel,
   LaunchOptions,
+  Page,
   Target,
 } from 'puppeteer-core';
 import puppeteer from 'puppeteer-core';
@@ -42,6 +43,102 @@ function makeTargetFilter(devtools: boolean) {
   };
 }
 
+async function attachToExistingBrowserInstance(options: {
+  userDataDir: string;
+  devtools: boolean;
+}): Promise<Browser | undefined> {
+  try {
+    const activePortPath = path.join(options.userDataDir, 'DevToolsActivePort');
+    const content = await fs.promises.readFile(activePortPath, 'utf-8');
+    const [portLine, wsPath] = content.trim().split('\n');
+    if (!portLine || !wsPath) {
+      return undefined;
+    }
+    const port = Number.parseInt(portLine, 10);
+    if (!Number.isFinite(port)) {
+      return undefined;
+    }
+    const browserWSEndpoint = `ws://127.0.0.1:${port}${wsPath}`;
+    return await puppeteer.connect({
+      browserWSEndpoint,
+      targetFilter: makeTargetFilter(options.devtools),
+      defaultViewport: null,
+      // @ts-expect-error Older puppeteer-core typings do not expose this option yet.
+      handleDevToolsAsPage: options.devtools,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+const STEALTH_SYMBOL = Symbol('chrome-devtools-mcp:stealth');
+
+function stealthScript() {
+  Object.defineProperty(navigator, 'webdriver', {
+    get: () => undefined,
+  });
+
+  // Ensure window.chrome is defined to mimic regular Chrome.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  window.chrome ??= {runtime: {}} as typeof window.chrome;
+
+  Object.defineProperty(navigator, 'plugins', {
+    get: () => [1, 2, 3, 4, 5],
+  });
+
+  Object.defineProperty(navigator, 'languages', {
+    get: () => ['en-US', 'en'],
+  });
+
+  const originalQuery = window.navigator.permissions.query;
+  window.navigator.permissions.query = parameters => {
+    if (parameters.name === 'notifications') {
+      return Promise.resolve({
+        state: Notification.permission,
+        onchange: null,
+      } as PermissionStatus);
+    }
+    return originalQuery(parameters);
+  };
+}
+
+async function applyStealthToPage(page: Page): Promise<void> {
+  await page.evaluateOnNewDocument(stealthScript);
+  try {
+    await page.evaluate(stealthScript);
+  } catch {
+    // Ignore pages (like chrome://) where script evaluation is disallowed.
+  }
+}
+
+async function enableStealthMode(browserInstance: Browser): Promise<void> {
+  const browserWithFlag = browserInstance as Browser & {
+    [STEALTH_SYMBOL]?: boolean;
+  };
+  if (browserWithFlag[STEALTH_SYMBOL]) {
+    return;
+  }
+  browserWithFlag[STEALTH_SYMBOL] = true;
+
+  const applyToTarget = async (target: Target) => {
+    try {
+      const page = await target.page();
+      if (page) {
+        await applyStealthToPage(page);
+      }
+    } catch {
+      // Ignore targets that cannot produce a page.
+    }
+  };
+
+  const pages = await browserInstance.pages();
+  await Promise.all(pages.map(page => applyStealthToPage(page)));
+
+  browserInstance.on('targetcreated', target => {
+    void applyToTarget(target);
+  });
+}
+
 export async function ensureBrowserConnected(options: {
   browserURL: string;
   devtools: boolean;
@@ -49,6 +146,7 @@ export async function ensureBrowserConnected(options: {
   if (browser?.connected) {
     return browser;
   }
+
   browser = await puppeteer.connect({
     targetFilter: makeTargetFilter(options.devtools),
     browserURL: options.browserURL,
@@ -96,11 +194,23 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
     });
   }
 
+  if (userDataDir) {
+    const existingBrowser = await attachToExistingBrowserInstance({
+      userDataDir,
+      devtools,
+    });
+    if (existingBrowser) {
+      await enableStealthMode(existingBrowser);
+      return existingBrowser;
+    }
+  }
+
   const args: LaunchOptions['args'] = [
     ...(options.args ?? []),
     '--hide-crash-restore-bubble',
     '--no-sandbox',
     '--disable-setuid-sandbox',
+    '--disable-blink-features=AutomationControlled',
   ];
   if (devtools) {
     args.push('--auto-open-devtools-for-tabs');
@@ -136,10 +246,11 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
       executablePath,
       defaultViewport: null,
       userDataDir,
-      pipe: true,
+      pipe: false,
       headless,
       args,
       acceptInsecureCerts: options.acceptInsecureCerts,
+      ignoreDefaultArgs: ['--enable-automation'],
       // @ts-expect-error Older puppeteer-core typings do not expose this option yet.
       handleDevToolsAsPage: devtools,
     });
@@ -157,6 +268,8 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
         contentHeight: options.viewport.height,
       });
     }
+
+    await enableStealthMode(launchedBrowser);
     return launchedBrowser;
   } catch (error) {
     if (

@@ -28,6 +28,8 @@ export interface ConnectOrLaunchOptions {
   devtools: boolean;
   currentBrowser?: Browser;
   log: (message: string) => void;
+  connectExisting?: typeof ensureBrowserConnected;
+  launchBrowser?: typeof ensureBrowserLaunched;
 }
 
 export function isRecoverableBrowserConnectError(error: unknown): boolean {
@@ -96,9 +98,12 @@ export async function connectOrLaunchBrowser(
       ? options.currentBrowser
       : undefined;
 
+  const connectExisting = options.connectExisting ?? ensureBrowserConnected;
+  const launchBrowser = options.launchBrowser ?? ensureBrowserLaunched;
+
   if (options.browserUrl && !browser) {
     try {
-      browser = await ensureBrowserConnected({
+      browser = await connectExisting({
         browserURL: options.browserUrl,
         devtools: options.devtools,
       });
@@ -117,7 +122,7 @@ export async function connectOrLaunchBrowser(
 
   if (!browser) {
     const channel = options.channel ?? 'stable';
-    browser = await ensureBrowserLaunched({
+    browser = await launchBrowser({
       headless: options.headless,
       executablePath: options.executablePath,
       customDevTools: options.customDevTools,

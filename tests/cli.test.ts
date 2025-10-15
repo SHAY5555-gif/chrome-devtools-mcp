@@ -112,4 +112,25 @@ describe('cli args parsing', () => {
       chromeArg: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
   });
+
+  it('allows specifying browser url alongside a fallback channel', async () => {
+    const args = parseArguments('1.0.0', [
+      'node',
+      'main.js',
+      '--browserUrl',
+      'http://localhost:3000',
+      '--channel',
+      'beta',
+    ]);
+    assert.deepStrictEqual(args, {
+      _: [],
+      headless: false,
+      isolated: false,
+      $0: 'npx chrome-devtools-mcp@latest',
+      'browser-url': 'http://localhost:3000',
+      browserUrl: 'http://localhost:3000',
+      u: 'http://localhost:3000',
+      channel: 'beta',
+    });
+  });
 });

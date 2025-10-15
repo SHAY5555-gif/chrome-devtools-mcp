@@ -204,64 +204,6 @@ function argsFromConfig(config: ServerConfig): CliArgs {
   return parseArguments(version, argv);
 }
 
-function isRecoverableBrowserConnectError(error: unknown): boolean {
-  const recoverableCodes = new Set([
-    'ECONNREFUSED',
-    'ERR_CONNECTION_REFUSED',
-    'ECONNRESET',
-    'EHOSTUNREACH',
-    'ENOTFOUND',
-    'ETIMEDOUT',
-  ]);
-  const seen = new Set<unknown>();
-
-  const hasRecoverableCode = (value: unknown): boolean => {
-    if (!value || seen.has(value)) {
-      return false;
-    }
-    seen.add(value);
-
-    if (typeof value === 'object') {
-      const code = (value as {code?: unknown}).code;
-      if (typeof code === 'string' && recoverableCodes.has(code)) {
-        return true;
-      }
-      const cause = (value as {cause?: unknown}).cause;
-      if (cause && hasRecoverableCode(cause)) {
-        return true;
-      }
-    }
-
-    if (value instanceof Error) {
-      const message = value.message.toLowerCase();
-      return (
-        message.includes('connection refused') ||
-        message.includes('failed to fetch') ||
-        message.includes('target closed') ||
-        message.includes('connection closed') ||
-        message.includes('timed out') ||
-        message.includes('404')
-      );
-    }
-
-    if (typeof value === 'string') {
-      const lowered = value.toLowerCase();
-      return (
-        lowered.includes('connection refused') ||
-        lowered.includes('failed to fetch') ||
-        lowered.includes('target closed') ||
-        lowered.includes('connection closed') ||
-        lowered.includes('timed out') ||
-        lowered.includes('404')
-      );
-    }
-
-    return false;
-  };
-
-  return hasRecoverableCode(error);
-}
-
 function initializeServer(args: CliArgs): ChromeDevtoolsServer {
   const logFile = args.logFile ? saveLogsToFile(args.logFile) : undefined;
 
@@ -287,44 +229,23 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
       extraArgs.push(`--proxy-server=${args.proxyServer}`);
     }
     const devtools = args.experimentalDevtools ?? false;
-    let browser = context?.browser;
-    if (browser && !browser.connected) {
-      browser = undefined;
-    }
-
-    if (args.browserUrl && !browser) {
-      try {
-        browser = await ensureBrowserConnected({
-          browserURL: args.browserUrl,
-          devtools,
-        });
-      } catch (error) {
-        if (isRecoverableBrowserConnectError(error)) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          logger(
-            `Unable to connect to Chrome at ${args.browserUrl}: ${message}. Launching a managed browser instead.`,
-          );
-        } else {
-          throw error;
-        }
-      }
-    }
-
-    if (!browser) {
-      browser = await ensureBrowserLaunched({
-        headless: args.headless,
-        executablePath: args.executablePath,
-        customDevTools: args.customDevtools,
-        channel: (args.channel as Channel) ?? 'stable',
-        isolated: args.isolated,
-        logFile,
-        viewport: args.viewport,
-        args: extraArgs,
-        acceptInsecureCerts: args.acceptInsecureCerts,
-        devtools,
-      });
-    }
+    const currentBrowser =
+      context?.browser && context.browser.connected ? context.browser : undefined;
+    const browser = await connectOrLaunchBrowser({
+      browserUrl: args.browserUrl,
+      headless: args.headless,
+      executablePath: args.executablePath,
+      customDevTools: args.customDevtools,
+      channel: args.channel as Channel | undefined,
+      isolated: args.isolated,
+      logFile,
+      viewport: args.viewport,
+      chromeArgs: extraArgs,
+      acceptInsecureCerts: args.acceptInsecureCerts,
+      devtools,
+      currentBrowser,
+      log: logger,
+    });
 
     if (!context || context.browser !== browser) {
       context = await McpContext.from(browser, logger);

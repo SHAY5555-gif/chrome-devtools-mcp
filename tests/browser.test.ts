@@ -13,7 +13,7 @@ import {executablePath} from 'puppeteer';
 import {launch} from '../src/browser.js';
 
 describe('browser', () => {
-  it('cannot launch multiple times with the same profile', async () => {
+  it('reuses the same browser instance when launched twice with the same profile', async () => {
     const tmpDir = os.tmpdir();
     const folderPath = path.join(tmpDir, `temp-folder-${crypto.randomUUID()}`);
     const browser1 = await launch({
@@ -24,22 +24,16 @@ describe('browser', () => {
       devtools: false,
     });
     try {
-      try {
-        const browser2 = await launch({
-          headless: true,
-          isolated: false,
-          userDataDir: folderPath,
-          executablePath: executablePath(),
-          devtools: false,
-        });
-        await browser2.close();
-        assert.fail('not reached');
-      } catch (err) {
-        assert.strictEqual(
-          err.message,
-          `The browser is already running for ${folderPath}. Use --isolated to run multiple browser instances.`,
-        );
-      }
+      const browser2 = await launch({
+        headless: true,
+        isolated: false,
+        userDataDir: folderPath,
+        executablePath: executablePath(),
+        devtools: false,
+      });
+
+      assert.strictEqual(browser2.wsEndpoint(), browser1.wsEndpoint());
+      await browser2.disconnect();
     } finally {
       await browser1.close();
     }
@@ -68,6 +62,28 @@ describe('browser', () => {
         width: 1501,
         height: 801,
       });
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it('removes webdriver flag for stealth compatibility', async () => {
+    const tmpDir = os.tmpdir();
+    const folderPath = path.join(tmpDir, `temp-folder-${crypto.randomUUID()}`);
+    const browser = await launch({
+      headless: true,
+      isolated: false,
+      userDataDir: folderPath,
+      executablePath: executablePath(),
+      devtools: false,
+    });
+
+    try {
+      const [page] = await browser.pages();
+      const webdriver = await page.evaluate(() => {
+        return navigator.webdriver;
+      });
+      assert.strictEqual(webdriver, undefined);
     } finally {
       await browser.close();
     }
