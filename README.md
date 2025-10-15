@@ -1,6 +1,7 @@
 # Chrome DevTools MCP
 
 [![npm chrome-devtools-mcp package](https://img.shields.io/npm/v/chrome-devtools-mcp.svg)](https://npmjs.org/package/chrome-devtools-mcp)
+[![smithery badge](https://smithery.ai/badge/@SHAY5555-gif/chrome-devtools-mcp-2)](https://smithery.ai/server/@SHAY5555-gif/chrome-devtools-mcp-2)
 
 `chrome-devtools-mcp` lets your coding agent (such as Gemini, Claude, Cursor or Copilot)
 control and inspect a live Chrome browser. It acts as a Model-Context-Protocol
@@ -50,6 +51,14 @@ Add the following config to your MCP client:
 
 > [!NOTE]  
 > Using `chrome-devtools-mcp@latest` ensures that your MCP client will always use the latest version of the Chrome DevTools MCP server.
+
+### Installing via Smithery
+
+To install Chrome DevTools Automation automatically via [Smithery](https://smithery.ai/server/@SHAY5555-gif/chrome-devtools-mcp-2):
+
+```bash
+npx -y @smithery/cli install @SHAY5555-gif/chrome-devtools-mcp-2
+```
 
 ### MCP Client configuration
 
