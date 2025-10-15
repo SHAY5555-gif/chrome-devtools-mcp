@@ -11,7 +11,6 @@ import path from 'node:path';
 import type {
   Browser,
   ChromeReleaseChannel,
-  ConnectOptions,
   LaunchOptions,
   Target,
 } from 'puppeteer-core';
@@ -19,37 +18,43 @@ import puppeteer from 'puppeteer-core';
 
 let browser: Browser | undefined;
 
-const ignoredPrefixes = new Set([
-  'chrome://',
-  'chrome-extension://',
-  'chrome-untrusted://',
-  'devtools://',
-]);
+function makeTargetFilter(devtools: boolean) {
+  const ignoredPrefixes = new Set([
+    'chrome://',
+    'chrome-extension://',
+    'chrome-untrusted://',
+  ]);
 
-function targetFilter(target: Target): boolean {
-  if (target.url() === 'chrome://newtab/') {
-    return true;
+  if (!devtools) {
+    ignoredPrefixes.add('devtools://');
   }
-  for (const prefix of ignoredPrefixes) {
-    if (target.url().startsWith(prefix)) {
-      return false;
+
+  return function targetFilter(target: Target): boolean {
+    if (target.url() === 'chrome://newtab/') {
+      return true;
     }
-  }
-  return true;
+    for (const prefix of ignoredPrefixes) {
+      if (target.url().startsWith(prefix)) {
+        return false;
+      }
+    }
+    return true;
+  };
 }
 
-const connectOptions: ConnectOptions = {
-  targetFilter,
-};
-
-export async function ensureBrowserConnected(browserURL: string) {
+export async function ensureBrowserConnected(options: {
+  browserURL: string;
+  devtools: boolean;
+}) {
   if (browser?.connected) {
     return browser;
   }
   browser = await puppeteer.connect({
-    ...connectOptions,
-    browserURL,
+    targetFilter: makeTargetFilter(options.devtools),
+    browserURL: options.browserURL,
     defaultViewport: null,
+    // @ts-expect-error Older puppeteer-core typings do not expose this option yet.
+    handleDevToolsAsPage: options.devtools,
   });
   return browser;
 }
@@ -68,10 +73,11 @@ interface McpLaunchOptions {
     height: number;
   };
   args?: string[];
+  devtools: boolean;
 }
 
 export async function launch(options: McpLaunchOptions): Promise<Browser> {
-  const {channel, customDevTools, headless, isolated} = options;
+  const {channel, customDevTools, devtools, headless, isolated} = options;
   const profileDirName =
     channel && channel !== 'stable'
       ? `chrome-profile-${channel}`
@@ -96,6 +102,9 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
     '--no-sandbox',
     '--disable-setuid-sandbox',
   ];
+  if (devtools) {
+    args.push('--auto-open-devtools-for-tabs');
+  }
   if (customDevTools) {
     args.push(`--custom-devtools-frontend=file://${customDevTools}`);
   }
@@ -103,7 +112,8 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
     args.push('--screen-info={3840x2160}');
   }
   let puppeteerChannel: ChromeReleaseChannel | undefined;
-  let executablePath = options.executablePath ?? process.env['PUPPETEER_EXECUTABLE_PATH'];
+  let executablePath =
+    options.executablePath ?? process.env['PUPPETEER_EXECUTABLE_PATH'];
   if (!executablePath) {
     try {
       const puppeteerFull = await import('puppeteer');
@@ -120,9 +130,9 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
   }
 
   try {
-    const browser = await puppeteer.launch({
-      ...connectOptions,
+    const launchedBrowser = await puppeteer.launch({
       channel: puppeteerChannel,
+      targetFilter: makeTargetFilter(devtools),
       executablePath,
       defaultViewport: null,
       userDataDir,
@@ -130,22 +140,24 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
       headless,
       args,
       acceptInsecureCerts: options.acceptInsecureCerts,
+      // @ts-expect-error Older puppeteer-core typings do not expose this option yet.
+      handleDevToolsAsPage: devtools,
     });
     if (options.logFile) {
       // FIXME: we are probably subscribing too late to catch startup logs. We
       // should expose the process earlier or expose the getRecentLogs() getter.
-      browser.process()?.stderr?.pipe(options.logFile);
-      browser.process()?.stdout?.pipe(options.logFile);
+      launchedBrowser.process()?.stderr?.pipe(options.logFile);
+      launchedBrowser.process()?.stdout?.pipe(options.logFile);
     }
     if (options.viewport) {
-      const [page] = await browser.pages();
+      const [page] = await launchedBrowser.pages();
       // @ts-expect-error internal API for now.
       await page?.resize({
         contentWidth: options.viewport.width,
         contentHeight: options.viewport.height,
       });
     }
-    return browser;
+    return launchedBrowser;
   } catch (error) {
     if (
       userDataDir &&

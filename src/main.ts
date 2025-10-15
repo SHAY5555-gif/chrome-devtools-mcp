@@ -85,6 +85,8 @@ export const configSchema = z
     viewport: viewportSchema,
     proxyServer: z.string().optional(),
     acceptInsecureCerts: z.boolean().optional(),
+    experimentalDevtools: z.boolean().optional(),
+    chromeArg: z.array(z.string()).optional(),
   })
   .passthrough();
 
@@ -170,6 +172,14 @@ function argsFromConfig(config: ServerConfig): CliArgs {
   if (config.customDevtools) {
     argv.push('--customDevtools', config.customDevtools);
   }
+  if (config.experimentalDevtools) {
+    argv.push('--experimentalDevtools');
+  }
+  if (config.chromeArg) {
+    for (const value of config.chromeArg) {
+      argv.push('--chrome-arg', value);
+    }
+  }
   if (config.channel) {
     argv.push('--channel', config.channel);
   }
@@ -212,12 +222,16 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
   const toolMutex = new Mutex();
 
   async function getContext(): Promise<McpContext> {
-    const extraArgs: string[] = [];
+    const extraArgs: string[] = (args.chromeArg ?? []).map(String);
     if (args.proxyServer) {
       extraArgs.push(`--proxy-server=${args.proxyServer}`);
     }
+    const devtools = args.experimentalDevtools ?? false;
     const browser = args.browserUrl
-      ? await ensureBrowserConnected(args.browserUrl)
+      ? await ensureBrowserConnected({
+          browserURL: args.browserUrl,
+          devtools,
+        })
       : await ensureBrowserLaunched({
           headless: args.headless,
           executablePath: args.executablePath,
@@ -228,6 +242,7 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
           viewport: args.viewport,
           args: extraArgs,
           acceptInsecureCerts: args.acceptInsecureCerts,
+          devtools,
         });
 
     if (!context || context.browser !== browser) {

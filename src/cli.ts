@@ -43,6 +43,10 @@ export const cliOptions = {
       'If specified, creates a temporary user-data-dir that is automatically cleaned up after the browser is closed.',
     default: false,
   },
+  customDevtools: {
+    type: 'string',
+    description: 'Path to a custom DevTools frontend bundle.',
+  },
   channel: {
     type: 'string',
     description:
