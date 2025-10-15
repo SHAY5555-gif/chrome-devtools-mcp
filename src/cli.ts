@@ -34,7 +34,6 @@ export const cliOptions = {
   executablePath: {
     type: 'string',
     description: 'Path to custom Chrome executable.',
-    conflicts: 'browserUrl',
     alias: 'e',
   },
   isolated: {
@@ -52,7 +51,7 @@ export const cliOptions = {
     description:
       'Specify a different Chrome channel that should be used. The default is the stable channel version.',
     choices: ['stable', 'canary', 'beta', 'dev'] as const,
-    conflicts: ['browserUrl', 'executablePath'],
+    conflicts: ['executablePath'],
   },
   logFile: {
     type: 'string',

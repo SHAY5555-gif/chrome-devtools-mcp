@@ -21,7 +21,7 @@ import {SetLevelRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {z} from 'zod';
 
 import type {Channel} from './browser.js';
-import {ensureBrowserConnected, ensureBrowserLaunched} from './browser.js';
+import {connectOrLaunchBrowser} from './browserManager.js';
 import {parseArguments} from './cli.js';
 import {logger, saveLogsToFile} from './logger.js';
 import {McpContext} from './McpContext.js';
@@ -156,7 +156,7 @@ function argsFromConfig(config: ServerConfig): CliArgs {
   if (config.browserUrl) {
     argv.push('--browserUrl', config.browserUrl);
   }
-  const headless = config.headless ?? true;
+  const headless = config.headless ?? false;
   if (headless) {
     argv.push('--headless');
   } else {
@@ -165,9 +165,11 @@ function argsFromConfig(config: ServerConfig): CliArgs {
   if (config.executablePath) {
     argv.push('--executablePath', config.executablePath);
   }
-  const isolated = config.isolated ?? true;
+  const isolated = config.isolated ?? false;
   if (isolated) {
     argv.push('--isolated');
+  } else {
+    argv.push('--no-isolated');
   }
   if (config.customDevtools) {
     argv.push('--customDevtools', config.customDevtools);
@@ -202,6 +204,64 @@ function argsFromConfig(config: ServerConfig): CliArgs {
   return parseArguments(version, argv);
 }
 
+function isRecoverableBrowserConnectError(error: unknown): boolean {
+  const recoverableCodes = new Set([
+    'ECONNREFUSED',
+    'ERR_CONNECTION_REFUSED',
+    'ECONNRESET',
+    'EHOSTUNREACH',
+    'ENOTFOUND',
+    'ETIMEDOUT',
+  ]);
+  const seen = new Set<unknown>();
+
+  const hasRecoverableCode = (value: unknown): boolean => {
+    if (!value || seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+
+    if (typeof value === 'object') {
+      const code = (value as {code?: unknown}).code;
+      if (typeof code === 'string' && recoverableCodes.has(code)) {
+        return true;
+      }
+      const cause = (value as {cause?: unknown}).cause;
+      if (cause && hasRecoverableCode(cause)) {
+        return true;
+      }
+    }
+
+    if (value instanceof Error) {
+      const message = value.message.toLowerCase();
+      return (
+        message.includes('connection refused') ||
+        message.includes('failed to fetch') ||
+        message.includes('target closed') ||
+        message.includes('connection closed') ||
+        message.includes('timed out') ||
+        message.includes('404')
+      );
+    }
+
+    if (typeof value === 'string') {
+      const lowered = value.toLowerCase();
+      return (
+        lowered.includes('connection refused') ||
+        lowered.includes('failed to fetch') ||
+        lowered.includes('target closed') ||
+        lowered.includes('connection closed') ||
+        lowered.includes('timed out') ||
+        lowered.includes('404')
+      );
+    }
+
+    return false;
+  };
+
+  return hasRecoverableCode(error);
+}
+
 function initializeServer(args: CliArgs): ChromeDevtoolsServer {
   const logFile = args.logFile ? saveLogsToFile(args.logFile) : undefined;
 
@@ -227,23 +287,44 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
       extraArgs.push(`--proxy-server=${args.proxyServer}`);
     }
     const devtools = args.experimentalDevtools ?? false;
-    const browser = args.browserUrl
-      ? await ensureBrowserConnected({
+    let browser = context?.browser;
+    if (browser && !browser.connected) {
+      browser = undefined;
+    }
+
+    if (args.browserUrl && !browser) {
+      try {
+        browser = await ensureBrowserConnected({
           browserURL: args.browserUrl,
           devtools,
-        })
-      : await ensureBrowserLaunched({
-          headless: args.headless,
-          executablePath: args.executablePath,
-          customDevTools: args.customDevtools,
-          channel: args.channel as Channel,
-          isolated: args.isolated,
-          logFile,
-          viewport: args.viewport,
-          args: extraArgs,
-          acceptInsecureCerts: args.acceptInsecureCerts,
-          devtools,
         });
+      } catch (error) {
+        if (isRecoverableBrowserConnectError(error)) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          logger(
+            `Unable to connect to Chrome at ${args.browserUrl}: ${message}. Launching a managed browser instead.`,
+          );
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    if (!browser) {
+      browser = await ensureBrowserLaunched({
+        headless: args.headless,
+        executablePath: args.executablePath,
+        customDevTools: args.customDevtools,
+        channel: (args.channel as Channel) ?? 'stable',
+        isolated: args.isolated,
+        logFile,
+        viewport: args.viewport,
+        args: extraArgs,
+        acceptInsecureCerts: args.acceptInsecureCerts,
+        devtools,
+      });
+    }
 
     if (!context || context.browser !== browser) {
       context = await McpContext.from(browser, logger);
