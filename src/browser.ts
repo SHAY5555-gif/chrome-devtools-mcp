@@ -147,9 +147,15 @@ export async function ensureBrowserConnected(options: {
     return browser;
   }
 
+  const isWebSocket =
+    options.browserURL.startsWith('ws://') ||
+    options.browserURL.startsWith('wss://');
+
   browser = await puppeteer.connect({
     targetFilter: makeTargetFilter(options.devtools),
-    browserURL: options.browserURL,
+    ...(isWebSocket
+      ? {browserWSEndpoint: options.browserURL}
+      : {browserURL: options.browserURL}),
     defaultViewport: null,
     // @ts-expect-error Older puppeteer-core typings do not expose this option yet.
     handleDevToolsAsPage: options.devtools,
