@@ -6,6 +6,19 @@ startCommand:
   type: http
   env:
     TRANSPORT: http
+
+env:
+  - name: BROWSERBASE_API_KEY
+    description: 'Browserbase API key. Required to create managed sessions.'
+    required: true
+  - name: BROWSERBASE_CONTEXT_ID
+    description: 'Optional Browserbase context ID to reuse saved browser state.'
+    required: false
+  - name: BROWSERBASE_PERSIST
+    description: 'Persist context state after the session ends (true/false).'
+    required: false
+    default: 'true'
+
 configSchema:
   type: object
   additionalProperties: false
@@ -17,14 +30,14 @@ configSchema:
     headless:
       type: boolean
       description: 'Run Chrome in headless mode.'
-      default: true
+      default: false
     executablePath:
       type: string
       description: 'Absolute path to a Chrome executable inside the container.'
     isolated:
       type: boolean
       description: 'Launch Chrome with an isolated user data dir.'
-      default: true
+      default: false
     customDevtools:
       type: string
       description: 'Path to a custom DevTools frontend bundle.'
@@ -72,10 +85,10 @@ configSchema:
         type: string
 exampleConfig:
   channel: stable
-  headless: true
-  isolated: true
+  headless: false
+  isolated: false
   viewport: '1280x720'
   browserbase:
     apiKey: '${BROWSERBASE_API_KEY}'
     contextId: '${BROWSERBASE_CONTEXT_ID}'
-    persist: true
+    persist: '${BROWSERBASE_PERSIST}'
