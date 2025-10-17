@@ -8,13 +8,15 @@ startCommand:
     TRANSPORT: http
 
 env:
-  - name: BROWSERBASE_API_KEY
-    description: 'Browserbase API key. Required to create managed sessions.'
+  BROWSERBASE_API_KEY:
+    description: 'Browserbase API key used to create managed sessions.'
     required: true
-  - name: BROWSERBASE_CONTEXT_ID
+    secret: true
+  BROWSERBASE_CONTEXT_ID:
     description: 'Optional Browserbase context ID to reuse saved browser state.'
     required: false
-  - name: BROWSERBASE_PERSIST
+    secret: true
+  BROWSERBASE_PERSIST:
     description: 'Persist context state after the session ends (true/false).'
     required: false
     default: 'true'
