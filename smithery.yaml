@@ -1,25 +1,8 @@
-runtime: container
-build:
-  dockerfile: Dockerfile
-  dockerBuildPath: .
+runtime: typescript
 startCommand:
   type: http
   env:
     TRANSPORT: http
-
-env:
-  BROWSERBASE_API_KEY:
-    description: 'Browserbase API key used to create managed sessions.'
-    required: true
-    secret: true
-  BROWSERBASE_CONTEXT_ID:
-    description: 'Optional Browserbase context ID to reuse saved browser state.'
-    required: false
-    secret: true
-  BROWSERBASE_PERSIST:
-    description: 'Persist context state after the session ends (true/false).'
-    required: false
-    default: 'true'
 
 configSchema:
   type: object
@@ -70,15 +53,18 @@ configSchema:
         apiKey:
           type: string
           description: 'Browserbase API key. Required to create managed sessions.'
+          format: password
         projectId:
           type: string
           description: 'Browserbase project ID. Defaults to bc914a3df39095025464368c5cabf0af8ae97b1f.'
         contextId:
           type: string
           description: 'Optional Browserbase context ID to reuse saved browser state.'
+          format: password
         persist:
           type: boolean
           description: 'Persist context state after the session ends. Defaults to true.'
+          default: true
       required: ['apiKey']
     chromeArg:
       type: array
@@ -91,6 +77,6 @@ exampleConfig:
   isolated: false
   viewport: '1280x720'
   browserbase:
-    apiKey: '${BROWSERBASE_API_KEY}'
-    contextId: '${BROWSERBASE_CONTEXT_ID}'
-    persist: '${BROWSERBASE_PERSIST}'
+    apiKey: 'YOUR_BROWSERBASE_API_KEY'
+    contextId: 'OPTIONAL_CONTEXT_ID'
+    persist: true
