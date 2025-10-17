@@ -52,6 +52,27 @@ Add the following config to your MCP client:
 > [!NOTE]  
 > Using `chrome-devtools-mcp@latest` ensures that your MCP client will always use the latest version of the Chrome DevTools MCP server.
 
+## Managed Browser sessions (Browserbase)
+
+Deployments running on [Smithery](https://smithery.ai) or any HTTP transport client can launch a managed Browserbase session for you. Provide a Browserbase API key through the `browserbase` config block:
+
+```json
+{
+  "browserbase": {
+    "apiKey": "YOUR_BROWSERBASE_API_KEY",
+    "projectId": "bc914a3df39095025464368c5cabf0af8ae97b1f",
+    "contextId": "optional-shared-context-id",
+    "persist": true
+  }
+}
+```
+
+- `apiKey` is required and should be stored securely (for example, as a Smithery secret or client-side environment variable).
+- `projectId` defaults to `bc914a3df39095025464368c5cabf0af8ae97b1f` if omitted.
+- `contextId` and `persist` let you reuse and optionally persist Browserbase contexts for stateful browsing.
+
+With this configuration, the server automatically connects to the Browserbase WebSocket endpoints—no local Chrome required.
+
 ### Installing via Smithery
 
 To install Chrome DevTools Automation automatically via [Smithery](https://smithery.ai/server/@SHAY5555-gif/chrome-devtools-mcp-2):

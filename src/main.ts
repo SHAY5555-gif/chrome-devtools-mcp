@@ -7,6 +7,7 @@
 import './polyfill.js';
 
 import assert from 'node:assert';
+import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -37,6 +38,7 @@ import * as screenshotTools from './tools/screenshot.js';
 import * as scriptTools from './tools/script.js';
 import * as snapshotTools from './tools/snapshot.js';
 import type {ToolDefinition} from './tools/ToolDefinition.js';
+import {createBrowserbaseSession} from './browserbase.js';
 
 const PORT = Number(process.env['PORT'] ?? 8081);
 const TRANSPORT = process.env['TRANSPORT'] ?? 'stdio';
@@ -87,6 +89,14 @@ export const configSchema = z
     acceptInsecureCerts: z.boolean().optional(),
     experimentalDevtools: z.boolean().optional(),
     chromeArg: z.array(z.string()).optional(),
+    browserbase: z
+      .object({
+        apiKey: z.string().min(1, 'Browserbase API key is required.'),
+        projectId: z.string().optional(),
+        contextId: z.string().optional(),
+        persist: z.boolean().optional(),
+      })
+      .optional(),
   })
   .passthrough();
 
@@ -126,10 +136,26 @@ function normalizeViewport(viewport?: ServerConfig['viewport']): string | undefi
 }
 
 function configCacheKey(config: ServerConfig): string {
-  const normalizedEntries = Object.entries({
+  const sanitizedConfig: Record<string, unknown> = {
     ...config,
     viewport: normalizeViewport(config.viewport),
-  })
+  };
+
+  if (sanitizedConfig.browserbase && typeof sanitizedConfig.browserbase === 'object') {
+    const browserbase = sanitizedConfig.browserbase as {
+      apiKey?: string;
+      [key: string]: unknown;
+    };
+    if (browserbase.apiKey) {
+      const hash = createHash('sha256').update(browserbase.apiKey).digest('hex');
+      sanitizedConfig.browserbase = {
+        ...browserbase,
+        apiKey: `sha256:${hash}`,
+      };
+    }
+  }
+
+  const normalizedEntries = Object.entries(sanitizedConfig)
     .filter(([, value]) => value !== undefined)
     .sort(([a], [b]) => a.localeCompare(b));
 
@@ -334,9 +360,36 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
   };
 }
 
-function createServer(config: ServerConfig): ChromeDevtoolsServer {
-  const args = argsFromConfig(config);
-  return initializeServer(args);
+async function createServer(config: ServerConfig): Promise<ChromeDevtoolsServer> {
+  let derivedConfig = config;
+  let browserbaseCleanup: (() => Promise<void>) | undefined;
+
+  if (config.browserbase) {
+    const session = await createBrowserbaseSession(config.browserbase, message => {
+      console.log(message);
+      logger(message);
+    });
+    derivedConfig = {
+      ...config,
+      browserUrl: config.browserUrl ?? session.browserWs,
+    };
+    browserbaseCleanup = session.cleanup;
+  }
+
+  const baseServer = initializeServer(argsFromConfig(derivedConfig));
+
+  return {
+    server: baseServer.server,
+    logDisclaimers: baseServer.logDisclaimers,
+    close: () => {
+      baseServer.close();
+      if (browserbaseCleanup) {
+        void browserbaseCleanup().catch(error => {
+          console.error(`Failed to clean up Browserbase session: ${String(error)}`);
+        });
+      }
+    },
+  };
 }
 
 app.all('/mcp', async (req: Request, res: Response) => {
@@ -369,7 +422,7 @@ app.all('/mcp', async (req: Request, res: Response) => {
     if (!cacheEntry) {
       let server: ChromeDevtoolsServer;
       try {
-        server = createServer(config);
+        server = await createServer(config);
       } catch (error) {
         res.status(400).json({
           jsonrpc: '2.0',

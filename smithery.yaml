@@ -47,6 +47,24 @@ configSchema:
     experimentalDevtools:
       type: boolean
       description: 'Enable DevTools automation targets (experimental).'
+    browserbase:
+      type: object
+      description: 'Launch a managed Browserbase session and connect Chrome DevTools MCP to it automatically.'
+      additionalProperties: false
+      properties:
+        apiKey:
+          type: string
+          description: 'Browserbase API key. Required to create managed sessions.'
+        projectId:
+          type: string
+          description: 'Browserbase project ID. Defaults to bc914a3df39095025464368c5cabf0af8ae97b1f.'
+        contextId:
+          type: string
+          description: 'Optional Browserbase context ID to reuse saved browser state.'
+        persist:
+          type: boolean
+          description: 'Persist context state after the session ends. Defaults to true.'
+      required: ['apiKey']
     chromeArg:
       type: array
       description: 'Additional command-line switches to pass to Chrome.'
@@ -57,3 +75,7 @@ exampleConfig:
   headless: true
   isolated: true
   viewport: '1280x720'
+  browserbase:
+    apiKey: '${BROWSERBASE_API_KEY}'
+    contextId: '${BROWSERBASE_CONTEXT_ID}'
+    persist: true
