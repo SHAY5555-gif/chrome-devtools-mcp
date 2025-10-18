@@ -14,63 +14,82 @@ startCommand:
       browserUrl:
         type: string
         format: uri
-        description: 'Existing Chrome WebSocket debugging URL to connect to.'
+        title: 'DevTools WebSocket URL'
+        description: 'Existing Chrome DevTools WebSocket URL to connect to (browserURL).'
       headless:
         type: boolean
+        title: 'Headless'
         description: 'Run Chrome in headless mode.'
         default: true
       executablePath:
         type: string
+        title: 'Executable Path'
         description: 'Absolute path to a Chrome executable inside the container.'
       isolated:
         type: boolean
+        title: 'Isolated User Data Dir'
         description: 'Launch Chrome with an isolated user data dir.'
         default: true
       customDevtools:
         type: string
-        description: 'Path to a custom DevTools frontend bundle.'
+        title: 'Custom DevTools Frontend'
+        description: 'Path or URL to a custom DevTools frontend bundle.'
       channel:
         type: string
         enum: ['stable', 'beta', 'canary', 'dev']
+        title: 'Chrome Channel'
         description: 'Chrome channel to use when launching the bundled browser.'
       logFile:
         type: string
-        description: 'Optional path inside the container where debug logs should be written.'
+        title: 'Log File'
+        description: 'Path inside the container where debug logs should be written.'
       viewport:
         type: string
-        description: 'Viewport size for launched Chrome instances, for example 1280x720.'
+        title: 'Viewport'
+        description: 'Viewport size for launched Chrome instances (e.g., 1280x720).'
       proxyServer:
         type: string
-        description: 'Proxy server definition to forward Chrome network traffic through.'
+        title: 'Proxy Server'
+        description: 'Proxy definition to forward Chrome network traffic through.'
       acceptInsecureCerts:
         type: boolean
+        title: 'Accept Insecure Certs'
         description: 'Ignore TLS certificate errors when launching Chrome.'
       experimentalDevtools:
         type: boolean
+        title: 'Experimental DevTools'
         description: 'Enable DevTools automation targets (experimental).'
       chromeArg:
         type: array
+        title: 'Additional Chrome Arguments'
         description: 'Additional command-line switches to pass to Chrome.'
         items:
           type: string
       browserbase:
         type: object
+        title: 'Browserbase'
         description: 'Launch a remote Chrome via Browserbase (scanner-friendly).'
         additionalProperties: false
         properties:
           apiKey:
             type: string
+            title: 'API Key'
             description: 'Browserbase API key used to create sessions.'
+            format: password
           projectId:
             type: string
+            title: 'Project ID'
             description: 'Browserbase project ID to associate sessions with.'
           contextId:
             type: string
-            description: 'Optional persistent context ID.'
+            title: 'Context ID'
+            description: 'Optional persistent context ID to reuse saved browser state.'
           persist:
             type: boolean
+            title: 'Persist Context'
             description: 'Whether to persist the Browserbase context.'
             default: true
+        required: ['apiKey']
 
 exampleConfig:
   channel: stable
