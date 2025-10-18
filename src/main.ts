@@ -20,8 +20,10 @@ import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import {SetLevelRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {z} from 'zod';
 
+import puppeteer from 'puppeteer-core';
+import type {Browser} from 'puppeteer-core';
 import type {Channel} from './browser.js';
-import {ensureBrowserConnected, ensureBrowserLaunched} from './browser.js';
+import {launch} from './browser.js';
 import {parseArguments} from './cli.js';
 import {logger, saveLogsToFile} from './logger.js';
 import {McpContext} from './McpContext.js';
@@ -331,6 +333,7 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
   });
 
   let context: McpContext | undefined;
+  let browserInstance: Browser | undefined;
   // Browserbase session lifecycle (optional)
   let bbSessionId: string | undefined;
   let bbApiKey: string | undefined;
@@ -409,14 +412,41 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
     }
     const devtools = args.experimentalDevtools ?? false;
     await ensureBrowserbaseBrowserURL();
-    let browser;
-    try {
-      browser = args.browserUrl
-        ? await ensureBrowserConnected({
-            browserURL: args.browserUrl,
-            devtools,
-          })
-        : await ensureBrowserLaunched({
+
+    // Reuse per-server browser if still connected
+    if (browserInstance && (browserInstance as any).isConnected?.()) {
+      // ok
+    } else if (browserInstance && (browserInstance as any).connected) {
+      // ok for older puppeteer typings
+    } else {
+      browserInstance = undefined;
+      try {
+        if (args.browserUrl) {
+          // Connect to remote (e.g., Browserbase) without global cache
+          const isWs = args.browserUrl.startsWith('ws://') || args.browserUrl.startsWith('wss://');
+          const connectOpts: Record<string, unknown> = {
+            targetFilter: (target: any) => {
+              const ignored = new Set(['chrome://', 'chrome-extension://', 'chrome-untrusted://']);
+              if (!devtools) ignored.add('devtools://');
+              const url = target.url?.() ?? '';
+              if (url === 'chrome://newtab/') return true;
+              for (const prefix of ignored) {
+                if (url.startsWith(prefix)) return false;
+              }
+              return true;
+            },
+            defaultViewport: null,
+            handleDevToolsAsPage: devtools as any,
+          };
+          if (isWs) {
+            (connectOpts as any).browserWSEndpoint = args.browserUrl;
+          } else {
+            (connectOpts as any).browserURL = args.browserUrl;
+          }
+          browserInstance = await puppeteer.connect(connectOpts as any);
+        } else {
+          // Launch local Chrome without global cache
+          browserInstance = await launch({
             headless: args.headless,
             executablePath: args.executablePath,
             customDevTools: args.customDevtools,
@@ -428,22 +458,35 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
             acceptInsecureCerts: args.acceptInsecureCerts,
             devtools,
           });
-    } catch (err) {
-      // If we failed to connect in Browserbase mode, create a fresh session
-      if (originalConfig?.browserbase) {
-        logger('Existing Browserbase session invalid; creating a new one.');
-        await ensureBrowserbaseBrowserURL(true);
-        browser = await ensureBrowserConnected({
-          browserURL: args.browserUrl!,
-          devtools,
-        });
-      } else {
-        throw err;
+        }
+      } catch (err) {
+        // If we failed to connect in Browserbase mode, create a fresh session
+        if (originalConfig?.browserbase) {
+          logger('Existing Browserbase session invalid; creating a new one.');
+          await ensureBrowserbaseBrowserURL(true);
+          browserInstance = await puppeteer.connect({
+            handleDevToolsAsPage: devtools as any,
+            defaultViewport: null,
+            targetFilter: (target: any) => {
+              const ignored = new Set(['chrome://', 'chrome-extension://', 'chrome-untrusted://']);
+              if (!devtools) ignored.add('devtools://');
+              const url = target.url?.() ?? '';
+              if (url === 'chrome://newtab/') return true;
+              for (const prefix of ignored) {
+                if (url.startsWith(prefix)) return false;
+              }
+              return true;
+            },
+            browserWSEndpoint: args.browserUrl!,
+          } as any);
+        } else {
+          throw err;
+        }
       }
     }
 
-    if (!context || context.browser !== browser) {
-      context = await McpContext.from(browser, logger);
+    if (!context || (browserInstance && context.browser !== browserInstance)) {
+      context = await McpContext.from(browserInstance!, logger);
     }
     return context;
   }
