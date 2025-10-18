@@ -398,7 +398,6 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
           : url;
     const browserWs = `${ensureWss(version.webSocketDebuggerUrl)}?${params.toString()}`;
     // Mutate args to force connect mode
-    // @ts-expect-error enrich at runtime
     args.browserUrl = browserWs;
   }
   const toolMutex = new Mutex();
