@@ -263,7 +263,14 @@ function argsFromConfig(config: ServerConfig): CliArgs {
   return parseArguments(version, argv);
 }
 
-function initializeServer(args: CliArgs): ChromeDevtoolsServer {
+type BrowserbaseConfig = {
+  apiKey: string;
+  projectId?: string;
+  contextId?: string;
+  persist?: boolean;
+};
+
+function initializeServer(args: CliArgs, browserbaseConfig?: BrowserbaseConfig): ChromeDevtoolsServer {
   const logFile = args.logFile ? saveLogsToFile(args.logFile) : undefined;
 
   logger(`Starting Chrome DevTools MCP Server v${version}`);
@@ -282,6 +289,9 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
   let context: McpContext | undefined;
   const toolMutex = new Mutex();
 
+  let browserbaseStarted = false;
+  let browserbaseCleanup: (() => Promise<void>) | undefined;
+
   async function getContext(): Promise<McpContext> {
     const extraArgs: string[] = (args.chromeArg ?? []).map(String);
     if (args.proxyServer) {
@@ -290,6 +300,17 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
     const devtools = args.experimentalDevtools ?? false;
     const currentBrowser =
       context?.browser && context.browser.connected ? context.browser : undefined;
+
+    // Lazily create a Browserbase session if configured and not yet started
+    if (!args.browserUrl && browserbaseConfig && !browserbaseStarted) {
+      const session = await createBrowserbaseSession(browserbaseConfig, message => {
+        console.log(message);
+        logger(message);
+      });
+      args.browserUrl = session.browserWs;
+      browserbaseCleanup = session.cleanup;
+      browserbaseStarted = true;
+    }
     const browser = await connectOrLaunchBrowser({
       browserUrl: args.browserUrl,
       headless: args.headless,
@@ -389,52 +410,6 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
       });
       server.server.close();
       logFile?.end();
-    },
-  };
-}
-
-async function createServer(config: ServerConfig): Promise<ChromeDevtoolsServer> {
-  let derivedConfig = config;
-  let browserbaseCleanup: (() => Promise<void>) | undefined;
-
-  // Fallback to environment variables if Browserbase config was not provided via query
-  if (!derivedConfig.browserbase && process.env['BROWSERBASE_API_KEY']) {
-    const persistEnv = process.env['BROWSERBASE_PERSIST'];
-    const toBool = (v?: string): boolean | undefined => {
-      if (!v) return undefined;
-      const lowered = v.toLowerCase();
-      return lowered === '1' || lowered === 'true' || lowered === 'yes';
-    };
-    derivedConfig = {
-      ...derivedConfig,
-      browserbase: {
-        apiKey: String(process.env['BROWSERBASE_API_KEY']),
-        projectId: process.env['BROWSERBASE_PROJECT_ID'] || undefined,
-        contextId: process.env['BROWSERBASE_CONTEXT_ID'] || undefined,
-        persist: toBool(persistEnv),
-      },
-    } as ServerConfig;
-  }
-
-  if (derivedConfig.browserbase) {
-    const session = await createBrowserbaseSession(derivedConfig.browserbase, message => {
-      console.log(message);
-      logger(message);
-    });
-    derivedConfig = {
-      ...derivedConfig,
-      browserUrl: derivedConfig.browserUrl ?? session.browserWs,
-    };
-    browserbaseCleanup = session.cleanup;
-  }
-
-  const baseServer = initializeServer(argsFromConfig(derivedConfig));
-
-  return {
-    server: baseServer.server,
-    logDisclaimers: baseServer.logDisclaimers,
-    close: () => {
-      baseServer.close();
       if (browserbaseCleanup) {
         void browserbaseCleanup().catch(error => {
           console.error(`Failed to clean up Browserbase session: ${String(error)}`);
@@ -442,6 +417,36 @@ async function createServer(config: ServerConfig): Promise<ChromeDevtoolsServer>
       }
     },
   };
+}
+
+async function createServer(config: ServerConfig): Promise<ChromeDevtoolsServer> {
+  // Prepare optional Browserbase config from request config or environment variables
+  let bbConfig: BrowserbaseConfig | undefined = config.browserbase
+    ? {
+        apiKey: config.browserbase.apiKey,
+        projectId: config.browserbase.projectId,
+        contextId: config.browserbase.contextId,
+        persist: config.browserbase.persist,
+      }
+    : undefined;
+
+  if (!bbConfig && process.env['BROWSERBASE_API_KEY']) {
+    const persistEnv = process.env['BROWSERBASE_PERSIST'];
+    const toBool = (v?: string): boolean | undefined => {
+      if (!v) return undefined;
+      const lowered = v.toLowerCase();
+      return lowered === '1' || lowered === 'true' || lowered === 'yes' || lowered === 'on';
+    };
+    bbConfig = {
+      apiKey: String(process.env['BROWSERBASE_API_KEY']),
+      projectId: process.env['BROWSERBASE_PROJECT_ID'] || undefined,
+      contextId: process.env['BROWSERBASE_CONTEXT_ID'] || undefined,
+      persist: toBool(persistEnv),
+    } as BrowserbaseConfig;
+  }
+
+  // Do not create Browserbase sessions during initialization; defer to first tool use
+  return initializeServer(argsFromConfig(config), bbConfig);
 }
 
 app.all('/mcp', async (req: Request, res: Response) => {
