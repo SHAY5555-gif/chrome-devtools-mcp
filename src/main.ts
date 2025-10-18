@@ -335,8 +335,8 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
   let bbSessionId: string | undefined;
   let bbApiKey: string | undefined;
 
-  async function ensureBrowserbaseBrowserURL(): Promise<void> {
-    if (args.browserUrl) {
+  async function ensureBrowserbaseBrowserURL(forceNew = false): Promise<void> {
+    if (args.browserUrl && !forceNew) {
       return;
     }
     const bb = originalConfig?.browserbase;
@@ -409,23 +409,38 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
     }
     const devtools = args.experimentalDevtools ?? false;
     await ensureBrowserbaseBrowserURL();
-    const browser = args.browserUrl
-      ? await ensureBrowserConnected({
-          browserURL: args.browserUrl,
-          devtools,
-        })
-      : await ensureBrowserLaunched({
-          headless: args.headless,
-          executablePath: args.executablePath,
-          customDevTools: args.customDevtools,
-          channel: args.channel as Channel,
-          isolated: args.isolated,
-          logFile,
-          viewport: args.viewport,
-          args: extraArgs,
-          acceptInsecureCerts: args.acceptInsecureCerts,
+    let browser;
+    try {
+      browser = args.browserUrl
+        ? await ensureBrowserConnected({
+            browserURL: args.browserUrl,
+            devtools,
+          })
+        : await ensureBrowserLaunched({
+            headless: args.headless,
+            executablePath: args.executablePath,
+            customDevTools: args.customDevtools,
+            channel: args.channel as Channel,
+            isolated: args.isolated,
+            logFile,
+            viewport: args.viewport,
+            args: extraArgs,
+            acceptInsecureCerts: args.acceptInsecureCerts,
+            devtools,
+          });
+    } catch (err) {
+      // If we failed to connect in Browserbase mode, create a fresh session
+      if (originalConfig?.browserbase) {
+        logger('Existing Browserbase session invalid; creating a new one.');
+        await ensureBrowserbaseBrowserURL(true);
+        browser = await ensureBrowserConnected({
+          browserURL: args.browserUrl!,
           devtools,
         });
+      } else {
+        throw err;
+      }
+    }
 
     if (!context || context.browser !== browser) {
       context = await McpContext.from(browser, logger);
@@ -466,8 +481,15 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
               content,
             };
           } catch (error) {
-            const errorText =
-              error instanceof Error ? error.message : String(error);
+            const errorText = (() => {
+              if (error instanceof Error) return error.message;
+              try {
+                // Provide more context than "[object Object]" when possible
+                return JSON.stringify(error);
+              } catch {
+                return String(error);
+              }
+            })();
 
             return {
               content: [
