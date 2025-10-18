@@ -174,6 +174,7 @@ const viewportSchema = z
 
 export const configSchema = z
   .object({
+    apiKey: z.string().optional(),
     browserUrl: z.string().url().optional(),
     headless: z.boolean().optional(),
     executablePath: z.string().optional(),
