@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   esbuild: {
     platform: 'node',
     target: 'node20',
