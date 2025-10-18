@@ -11,6 +11,11 @@ startCommand:
     # Allow extra keys for auth/providers coming from Test profile
     additionalProperties: true
     properties:
+      apiKey:
+        type: string
+        title: 'API Key'
+        description: 'Your API key'
+        format: password
       browserUrl:
         type: string
         format: uri
@@ -90,6 +95,39 @@ startCommand:
             description: 'Whether to persist the Browserbase context.'
             default: true
         required: ['apiKey']
+
+  # Map user configuration to environment variables and CLI flags
+  commandFunction: |
+    config => {
+      const env = { TRANSPORT: 'http' };
+      const bb = config.browserbase || {};
+
+      // Prefer nested browserbase.* but allow top-level apiKey as a fallback
+      if (bb.apiKey || config.apiKey) env.BROWSERBASE_API_KEY = bb.apiKey || config.apiKey;
+      if (bb.projectId) env.BROWSERBASE_PROJECT_ID = bb.projectId;
+      if (bb.contextId) env.BROWSERBASE_CONTEXT_ID = bb.contextId;
+      if (typeof bb.persist !== 'undefined') env.BROWSERBASE_PERSIST = String(bb.persist);
+
+      const args = [];
+      if (config.browserUrl) args.push('--browserUrl', String(config.browserUrl));
+      if (typeof config.headless === 'boolean') args.push(config.headless ? '--headless' : '--no-headless');
+      if (config.executablePath) args.push('--executablePath', String(config.executablePath));
+      if (config.isolated) args.push('--isolated');
+      if (config.customDevtools) args.push('--customDevtools', String(config.customDevtools));
+      if (config.experimentalDevtools) args.push('--experimentalDevtools');
+      if (config.channel) args.push('--channel', String(config.channel));
+      if (config.logFile) args.push('--logFile', String(config.logFile));
+      if (config.viewport && typeof config.viewport === 'string') args.push('--viewport', config.viewport);
+      if (config.proxyServer) args.push('--proxyServer', String(config.proxyServer));
+      if (typeof config.acceptInsecureCerts === 'boolean') args.push(config.acceptInsecureCerts ? '--acceptInsecureCerts' : '--no-acceptInsecureCerts');
+      if (Array.isArray(config.chromeArg)) for (const v of config.chromeArg) args.push('--chrome-arg', String(v));
+
+      return {
+        command: 'node',
+        args: ['build/src/index.js', ...args],
+        env,
+      };
+    }
 
 exampleConfig:
   channel: stable

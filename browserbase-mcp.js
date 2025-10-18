@@ -6,9 +6,11 @@
  * Usage:
  *   node browserbase-mcp.js [extra chrome-devtools-mcp args...]
  *
- * Environment overrides:
- *   BROWSERBASE_API_KEY      - Browserbase API key (defaults to known dev key)
- *   BROWSERBASE_PROJECT_ID   - Target Browserbase project ID
+ * Configuration (CLI/env):
+ *   --apiKey | BROWSERBASE_API_KEY | API_KEY
+ *   --projectId | BROWSERBASE_PROJECT_ID | PROJECT_ID
+ *   --contextId | BROWSERBASE_CONTEXT_ID | CONTEXT_ID
+ *   --persist | BROWSERBASE_PERSIST | PERSIST (true/false)
  */
 
 const { spawn } = require('child_process');
@@ -19,13 +21,46 @@ const DEFAULT_PROJECT_ID = '714e774c-9745-4383-99d5-f64df74919b9';
 const DEFAULT_CONTEXT_ID = '77909aa9-e5ff-47cc-a370-df4c2648fb64';
 const DEFAULT_PERSIST = true;
 
-const API_KEY = process.env.BROWSERBASE_API_KEY || DEFAULT_API_KEY;
-const PROJECT_ID = process.env.BROWSERBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-const CONTEXT_ID = process.env.BROWSERBASE_CONTEXT_ID || DEFAULT_CONTEXT_ID;
-const PERSIST =
-  process.env.BROWSERBASE_PERSIST !== undefined
-    ? process.env.BROWSERBASE_PERSIST === 'true'
-    : DEFAULT_PERSIST;
+function parseArgs(argv) {
+  const out = {};
+  const arr = argv.slice(2);
+  for (let i = 0; i < arr.length; i++) {
+    const token = arr[i];
+    if (!token.startsWith('--')) continue;
+    const [key, maybeVal] = token.replace(/^--/, '').split('=');
+    if (maybeVal !== undefined) {
+      out[key] = maybeVal;
+      continue;
+    }
+    const next = arr[i + 1];
+    if (next && !next.startsWith('--')) {
+      out[key] = next;
+      i++;
+    } else {
+      out[key] = 'true';
+    }
+  }
+  return out;
+}
+
+function coerceBool(val, dflt) {
+  if (val === undefined || val === null || val === '') return dflt;
+  const s = String(val).toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+}
+
+const argvFlags = parseArgs(process.argv);
+
+const API_KEY =
+  argvFlags.apiKey || process.env.BROWSERBASE_API_KEY || process.env.API_KEY || DEFAULT_API_KEY;
+const PROJECT_ID =
+  argvFlags.projectId || process.env.BROWSERBASE_PROJECT_ID || process.env.PROJECT_ID || DEFAULT_PROJECT_ID;
+const CONTEXT_ID =
+  argvFlags.contextId || process.env.BROWSERBASE_CONTEXT_ID || process.env.CONTEXT_ID || DEFAULT_CONTEXT_ID;
+const PERSIST = coerceBool(
+  argvFlags.persist ?? process.env.BROWSERBASE_PERSIST ?? process.env.PERSIST,
+  DEFAULT_PERSIST,
+);
 
 if (!API_KEY) {
   console.error('Missing Browserbase API key. Set BROWSERBASE_API_KEY.');
@@ -128,7 +163,24 @@ async function main() {
   const sessionId = session.id;
   const signingKey = session.signingKey;
   const query = buildQuery(sessionId, signingKey);
-  const extraArgs = process.argv.slice(2);
+  // Forward any extra args intended for chrome-devtools-mcp (filter out our own flags)
+  const ownFlags = new Set(['apiKey', 'projectId', 'contextId', 'persist']);
+  const extraArgs = process.argv
+    .slice(2)
+    .filter((t, idx, arr) => {
+      if (!t.startsWith('--')) return true;
+      const key = t.replace(/^--/, '').split('=')[0];
+      if (ownFlags.has(key)) {
+        // skip this flag and its value if provided as separate token
+        const next = arr[idx + 1];
+        if (next && !next.startsWith('--')) {
+          arr[idx + 1] = '--__consumed__';
+        }
+        return false;
+      }
+      return true;
+    })
+    .filter(t => t !== '--__consumed__');
 
   log(`  Session ID: ${sessionId}`);
   log(`  Region:     ${session.region}`);
@@ -183,7 +235,7 @@ async function main() {
 
   const cliPath =
     process.env.BROWSERBASE_MCP_CLI ??
-    path.resolve(__dirname, 'chrome-devtools-mcp', 'build', 'src', 'index.js');
+    path.resolve(__dirname, 'build', 'src', 'index.js');
   const spawnArgs = [cliPath, '--browserUrl', browserWs, ...extraArgs];
   child = spawn(process.execPath, spawnArgs, {
     stdio: ['pipe', 'pipe', 'pipe'],

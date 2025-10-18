@@ -13,8 +13,32 @@
 const DEFAULT_API_KEY = 'bb_live_1dl_uqDytSMn3XfdRQov3ffSgyQ';
 const DEFAULT_PROJECT_ID = '714e774c-9745-4383-99d5-f64df74919b9';
 
-const API_KEY = process.env.BROWSERBASE_API_KEY || DEFAULT_API_KEY;
-const PROJECT_ID = process.env.BROWSERBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+function parseArgs(argv) {
+  const out = {};
+  const arr = argv.slice(2);
+  for (let i = 0; i < arr.length; i++) {
+    const token = arr[i];
+    if (!token.startsWith('--')) continue;
+    const [key, maybeVal] = token.replace(/^--/, '').split('=');
+    if (maybeVal !== undefined) {
+      out[key] = maybeVal;
+      continue;
+    }
+    const next = arr[i + 1];
+    if (next && !next.startsWith('--')) {
+      out[key] = next;
+      i++;
+    } else {
+      out[key] = 'true';
+    }
+  }
+  return out;
+}
+
+const argvFlags = parseArgs(process.argv);
+
+const API_KEY = argvFlags.apiKey || process.env.BROWSERBASE_API_KEY || process.env.API_KEY || DEFAULT_API_KEY;
+const PROJECT_ID = argvFlags.projectId || process.env.BROWSERBASE_PROJECT_ID || process.env.PROJECT_ID || DEFAULT_PROJECT_ID;
 
 if (!API_KEY) {
   console.error('Missing Browserbase API key. Set BROWSERBASE_API_KEY.');
@@ -117,7 +141,7 @@ async function main() {
 
   console.log('\nPowerShell snippet for chrome-devtools-mcp:');
   console.log(`  $env:BB_DEVTOOLS_WS = '${browserWs}';`);
-  console.log('  npx -y chrome-devtools-mcp@latest --browserWSEndpoint $env:BB_DEVTOOLS_WS');
+  console.log('  npx -y chrome-devtools-mcp@latest --browserUrl $env:BB_DEVTOOLS_WS');
 }
 
 main().catch((err) => {
