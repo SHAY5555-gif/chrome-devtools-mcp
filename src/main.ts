@@ -51,6 +51,105 @@ app.use(
 );
 app.use(express.json());
 
+// Expose JSON Schema for session configuration (for external/container hosting)
+// This enables Smithery and hosting platforms to discover configurable fields
+// without authentication to validate that CONFIGURE UI is available.
+app.get('/.well-known/mcp-config', (_req: Request, res: Response) => {
+  const schema = {
+    type: 'object',
+    // Keep in sync with smithery.yaml; allow extra provider-specific keys
+    additionalProperties: true,
+    properties: {
+      apiKey: {
+        type: 'string',
+        description: 'Your API key',
+      },
+      browserUrl: {
+        type: 'string',
+        format: 'uri',
+        description: 'Existing Chrome WebSocket debugging URL to connect to.',
+      },
+      headless: {
+        type: 'boolean',
+        description: 'Run Chrome in headless mode.',
+        default: true,
+      },
+      executablePath: {
+        type: 'string',
+        description: 'Absolute path to a Chrome executable inside the container.',
+      },
+      isolated: {
+        type: 'boolean',
+        description: 'Launch Chrome with an isolated user data dir.',
+        default: true,
+      },
+      customDevtools: {
+        type: 'string',
+        description: 'Path to a custom DevTools frontend bundle.',
+      },
+      channel: {
+        type: 'string',
+        enum: ['stable', 'beta', 'canary', 'dev'],
+        description: 'Chrome channel to use when launching the bundled browser.',
+      },
+      logFile: {
+        type: 'string',
+        description:
+          'Optional path inside the container where debug logs should be written.',
+      },
+      viewport: {
+        type: 'string',
+        description:
+          'Viewport size for launched Chrome instances, for example 1280x720.',
+      },
+      proxyServer: {
+        type: 'string',
+        description:
+          'Proxy server definition to forward Chrome network traffic through.',
+      },
+      acceptInsecureCerts: {
+        type: 'boolean',
+        description: 'Ignore TLS certificate errors when launching Chrome.',
+      },
+      experimentalDevtools: {
+        type: 'boolean',
+        description: 'Enable DevTools automation targets (experimental).',
+      },
+      chromeArg: {
+        type: 'array',
+        description: 'Additional command-line switches to pass to Chrome.',
+        items: {type: 'string'},
+      },
+      browserbase: {
+        type: 'object',
+        description: 'Launch a remote Chrome via Browserbase (scanner-friendly).',
+        additionalProperties: false,
+        properties: {
+          apiKey: {
+            type: 'string',
+            description: 'Browserbase API key used to create sessions.',
+          },
+          projectId: {
+            type: 'string',
+            description: 'Browserbase project ID to associate sessions with.',
+          },
+          contextId: {
+            type: 'string',
+            description: 'Optional persistent context ID.',
+          },
+          persist: {
+            type: 'boolean',
+            description: 'Whether to persist the Browserbase context.',
+            default: true,
+          },
+        },
+      },
+    },
+  } as const;
+
+  res.json(schema);
+});
+
 interface HttpServerCacheEntry {
   server: ChromeDevtoolsServer;
   logDisclaimersShown: boolean;

@@ -11,6 +11,10 @@ configSchema:
   # Allow extra keys for auth/providers coming from Test profile
   additionalProperties: true
   properties:
+    # Example top-level key to demonstrate CONFIGURE UI
+    apiKey:
+      type: string
+      description: Your API key
     browserUrl:
       type: string
       format: uri
