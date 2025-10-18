@@ -49,13 +49,21 @@ export async function ensureBrowserConnected(options: {
   if (browser?.connected) {
     return browser;
   }
-  browser = await puppeteer.connect({
+  const isWs = options.browserURL.startsWith('ws://') || options.browserURL.startsWith('wss://');
+  const connectOpts: Record<string, unknown> = {
     targetFilter: makeTargetFilter(options.devtools),
-    browserURL: options.browserURL,
     defaultViewport: null,
-    // @ts-expect-error Older puppeteer-core typings do not expose this option yet.
     handleDevToolsAsPage: options.devtools,
-  });
+  };
+  if (isWs) {
+    // When a WS endpoint is provided (e.g., Browserbase), use browserWSEndpoint.
+    connectOpts.browserWSEndpoint = options.browserURL;
+  } else {
+    // Otherwise, assume it's a DevTools HTTP JSON endpoint and let Puppeteer
+    // resolve /json/version -> WS internally.
+    connectOpts.browserURL = options.browserURL;
+  }
+  browser = await puppeteer.connect(connectOpts as any);
   return browser;
 }
 
