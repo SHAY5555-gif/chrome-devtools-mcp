@@ -16,6 +16,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV TRANSPORT=http
 ENV PUPPETEER_CACHE_DIR=/root/.cache/puppeteer
+ENV SMITHERY_CONFIG=smithery.config.mjs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fonts-liberation \
