@@ -253,8 +253,11 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 function argsFromConfig(config: ServerConfig): CliArgs {
   const argv = ['node', 'server'];
 
+  const envBrowserUrl = process.env['BROWSERBASE_BROWSER_WS'];
   if (config.browserUrl) {
     argv.push('--browserUrl', config.browserUrl);
+  } else if (envBrowserUrl) {
+    argv.push('--browserUrl', envBrowserUrl);
   }
   const headless = config.headless ?? true;
   if (headless) {

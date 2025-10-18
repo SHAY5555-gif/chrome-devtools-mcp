@@ -10,9 +10,44 @@ startCommand:
     type: object
     additionalProperties: false
     properties:
-      headless:
-        type: boolean
-        description: 'Run Chrome in headless mode.'
-        default: true
+      browserbase:
+        type: object
+        description: 'Browserbase remote session settings.'
+        additionalProperties: false
+        properties:
+          apiKey:
+            type: string
+            description: 'Browserbase API key.'
+          projectId:
+            type: string
+            description: 'Browserbase Project ID.'
+          contextId:
+            type: string
+            description: 'Optional persistent context id.'
+          persist:
+            type: boolean
+            description: 'Persist the Browserbase context across runs.'
+            default: true
+          mcpCli:
+            type: string
+            description: 'Optional override path to MCP entrypoint (advanced).'
+  commandFunction: |
+    (config) => {
+      const bb = config.browserbase || {};
+      return {
+        command: 'node',
+        args: ['scripts/browserbase-bridge-http.mjs'],
+        env: {
+          TRANSPORT: 'http',
+          ...(bb.apiKey ? { BROWSERBASE_API_KEY: bb.apiKey } : {}),
+          ...(bb.projectId ? { BROWSERBASE_PROJECT_ID: bb.projectId } : {}),
+          ...(bb.contextId ? { BROWSERBASE_CONTEXT_ID: bb.contextId } : {}),
+          ...(bb.persist !== undefined ? { BROWSERBASE_PERSIST: String(!!bb.persist) } : {}),
+          ...(bb.mcpCli ? { BROWSERBASE_MCP_CLI: bb.mcpCli } : {}),
+        },
+      };
+    }
   exampleConfig:
-  headless: true
+  browserbase:
+    # Provide apiKey and projectId via Test Profile or secret store
+    persist: true
