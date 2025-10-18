@@ -60,6 +60,7 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/smithery.yaml ./smithery.yaml
+COPY --from=builder /app/smithery.config.mjs ./smithery.config.mjs
 COPY --from=builder /app/LICENSE ./LICENSE
 COPY --from=builder /root/.cache/puppeteer /root/.cache/puppeteer
 
