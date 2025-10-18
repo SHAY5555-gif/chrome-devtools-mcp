@@ -98,6 +98,31 @@ export const newPage = defineTool({
   },
 });
 
+export const newPageDefault = defineTool({
+  name: 'new_page_default',
+  description:
+    'Creates a new page and navigates to the configured default URL (no arguments required).',
+  annotations: {
+    category: ToolCategories.NAVIGATION_AUTOMATION,
+    readOnlyHint: false,
+  },
+  schema: {
+    ...timeoutSchema,
+  },
+  handler: async (request, response, context) => {
+    const url = process.env['MCP_DEFAULT_URL'] || 'https://example.com';
+    const page = await context.newPage();
+
+    await context.waitForEventsAfterAction(async () => {
+      await page.goto(url, {
+        timeout: request.params.timeout,
+      });
+    });
+
+    response.setIncludePages(true);
+  },
+});
+
 export const navigatePage = defineTool({
   name: 'navigate_page',
   description: `Navigates the currently selected page to a URL.`,

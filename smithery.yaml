@@ -10,6 +10,9 @@ startCommand:
     type: object
     additionalProperties: false
     properties:
+      defaultUrl:
+        type: string
+        description: 'Default URL to open with the new_page_default tool.'
       browserbase:
         type: object
         description: 'Browserbase remote session settings.'
@@ -39,6 +42,7 @@ startCommand:
         args: ['scripts/browserbase-bridge-http.mjs'],
         env: {
           TRANSPORT: 'http',
+          ...(config.defaultUrl ? { MCP_DEFAULT_URL: config.defaultUrl } : {}),
           ...(bb.apiKey ? { BROWSERBASE_API_KEY: bb.apiKey } : {}),
           ...(bb.projectId ? { BROWSERBASE_PROJECT_ID: bb.projectId } : {}),
           ...(bb.contextId ? { BROWSERBASE_CONTEXT_ID: bb.contextId } : {}),
@@ -48,6 +52,7 @@ startCommand:
       };
     }
   exampleConfig:
+  defaultUrl: 'https://example.com'
   browserbase:
     # Provide apiKey and projectId via Test Profile or secret store
     persist: true
