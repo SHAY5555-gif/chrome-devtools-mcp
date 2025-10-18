@@ -44,13 +44,16 @@ const PORT = Number(process.env['PORT'] ?? 8081);
 const TRANSPORT = process.env['TRANSPORT'] ?? 'stdio';
 
 const app = express();
+app.disable('x-powered-by');
+// CORS: allow all origins and reflect requested headers; also handle preflight
 app.use(
   cors({
     origin: '*',
-    exposedHeaders: ['Mcp-Session-Id', 'mcp-protocol-version'],
-    allowedHeaders: ['Content-Type', 'mcp-session-id'],
+    exposedHeaders: ['mcp-session-id', 'mcp-protocol-version'],
+    // Do not restrict allowedHeaders; let cors reflect Access-Control-Request-Headers automatically
   }),
 );
+app.options('*', cors());
 app.use(express.json());
 
 // Expose a well-known JSON Schema for external/self-hosted clients.
@@ -496,8 +499,16 @@ app.all('/mcp', async (req: Request, res: Response) => {
 
     guard = await cacheEntry.mutex.acquire();
 
+    // Be permissive for scanners: if Accept header misses text/event-stream,
+    // synthesize it so Streamable HTTP validation passes. We'll respond as JSON.
+    const accepts = req.headers['accept'];
+    if (!accepts || !accepts.includes('text/event-stream')) {
+      req.headers['accept'] = accepts ? `${accepts}, text/event-stream` : 'application/json, text/event-stream';
+    }
+
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
+      enableJsonResponse: true,
     });
 
     await cacheEntry.server.server.connect(transport);
