@@ -109,8 +109,7 @@ interface ChromeDevtoolsServer {
 }
 
 function readPackageJson(): {version?: string} {
-  const currentDir = import.meta.dirname;
-  const packageJsonPath = path.join(currentDir, '..', '..', 'package.json');
+  const packageJsonPath = path.resolve(process.cwd(), 'package.json');
   if (!fs.existsSync(packageJsonPath)) {
     return {};
   }

@@ -31,4 +31,13 @@ if (major < 20) {
   process.exit(1);
 }
 
-await import('./main.js');
+async function start() {
+  try {
+    await import('./main.js');
+  } catch (error) {
+    console.error('Server error:', error);
+    process.exit(1);
+  }
+}
+
+void start();
