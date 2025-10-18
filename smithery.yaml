@@ -9,7 +9,8 @@ startCommand:
 
 configSchema:
   type: object
-  additionalProperties: false
+  # Allow extra keys for auth/providers coming from Test profile
+  additionalProperties: true
   properties:
     browserUrl:
       type: string
@@ -18,14 +19,14 @@ configSchema:
     headless:
       type: boolean
       description: 'Run Chrome in headless mode.'
-      default: false
+      default: true
     executablePath:
       type: string
       description: 'Absolute path to a Chrome executable inside the container.'
     isolated:
       type: boolean
       description: 'Launch Chrome with an isolated user data dir.'
-      default: false
+      default: true
     customDevtools:
       type: string
       description: 'Path to a custom DevTools frontend bundle.'
@@ -50,25 +51,22 @@ configSchema:
       description: 'Enable DevTools automation targets (experimental).'
     browserbase:
       type: object
-      description: 'Launch a managed Browserbase session and connect Chrome DevTools MCP to it automatically.'
+      description: 'Launch a remote Chrome via Browserbase (scanner-friendly).'
       additionalProperties: false
       properties:
         apiKey:
           type: string
-          description: 'Browserbase API key. Required to create managed sessions.'
-          format: password
+          description: 'Browserbase API key used to create sessions.'
         projectId:
           type: string
-          description: 'Browserbase project ID. Defaults to bc914a3df39095025464368c5cabf0af8ae97b1f.'
+          description: 'Browserbase project ID to associate sessions with.'
         contextId:
           type: string
-          description: 'Optional Browserbase context ID to reuse saved browser state.'
-          format: password
+          description: 'Optional persistent context ID.'
         persist:
           type: boolean
-          description: 'Persist context state after the session ends. Defaults to true.'
+          description: 'Whether to persist the Browserbase context.'
           default: true
-      required: ['apiKey']
     chromeArg:
       type: array
       description: 'Additional command-line switches to pass to Chrome.'
@@ -76,10 +74,10 @@ configSchema:
         type: string
 exampleConfig:
   channel: stable
-  headless: false
-  isolated: false
+  headless: true
+  isolated: true
   viewport: '1280x720'
   browserbase:
-    apiKey: 'YOUR_BROWSERBASE_API_KEY'
-    contextId: 'OPTIONAL_CONTEXT_ID'
+    # apiKey is provided via Test profile or secret store — do not hardcode
+    projectId: 'bc914a3df39095025464368c5cabf0af8ae97b1f'
     persist: true
