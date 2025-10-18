@@ -187,6 +187,15 @@ export const configSchema = z
     acceptInsecureCerts: z.boolean().optional(),
     experimentalDevtools: z.boolean().optional(),
     chromeArg: z.array(z.string()).optional(),
+    browserbase: z
+      .object({
+        apiKey: z.string().optional(),
+        projectId: z.string().optional(),
+        contextId: z.string().optional(),
+        persist: z.boolean().optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
@@ -305,7 +314,7 @@ function argsFromConfig(config: ServerConfig): CliArgs {
   return parseArguments(version, argv);
 }
 
-function initializeServer(args: CliArgs): ChromeDevtoolsServer {
+function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeDevtoolsServer {
   const logFile = args.logFile ? saveLogsToFile(args.logFile) : undefined;
 
   logger(`Starting Chrome DevTools MCP Server v${version}`);
@@ -322,6 +331,76 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
   });
 
   let context: McpContext | undefined;
+  // Browserbase session lifecycle (optional)
+  let bbSessionId: string | undefined;
+  let bbApiKey: string | undefined;
+
+  async function ensureBrowserbaseBrowserURL(): Promise<void> {
+    if (args.browserUrl) {
+      return;
+    }
+    const bb = originalConfig?.browserbase;
+    if (!bb?.apiKey || !bb?.projectId) {
+      return;
+    }
+    bbApiKey = bb.apiKey;
+
+    // Create session
+    const res = await fetch('https://api.browserbase.com/v1/sessions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-bb-api-key': bb.apiKey,
+      },
+      body: JSON.stringify({
+        projectId: bb.projectId,
+        keepAlive: true,
+        browserSettings: {
+          context: bb.contextId
+            ? {id: bb.contextId, persist: bb.persist ?? true}
+            : undefined,
+        },
+        userMetadata: {mcp: 'true', bridge: 'inline'},
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(
+        `Failed to create Browserbase session: ${res.status} ${res.statusText}\n${text}`,
+      );
+    }
+    const session = (await res.json()) as {
+      id: string;
+      signingKey: string;
+    };
+    bbSessionId = session.id;
+
+    const params = new URLSearchParams();
+    params.set('sessionId', session.id);
+    params.set('signingKey', session.signingKey);
+    params.set('apiKey', bb.apiKey);
+
+    // version endpoint returns webSocketDebuggerUrl for the browser
+    const connectUrl = `https://connect.browserbase.com/json/version?${params.toString()}`;
+    const versionRes = await fetch(connectUrl);
+    if (!versionRes.ok) {
+      const text = await versionRes.text().catch(() => '');
+      throw new Error(
+        `Failed to fetch Browserbase connect version: ${versionRes.status} ${versionRes.statusText}\n${text}`,
+      );
+    }
+    const version = (await versionRes.json()) as {webSocketDebuggerUrl: string};
+    const ensureWss = (url: string) =>
+      url.startsWith('wss://')
+        ? url
+        : url.startsWith('ws://')
+          ? `wss://${url.slice('ws://'.length)}`
+          : url;
+    const browserWs = `${ensureWss(version.webSocketDebuggerUrl)}?${params.toString()}`;
+    // Mutate args to force connect mode
+    // @ts-expect-error enrich at runtime
+    args.browserUrl = browserWs;
+  }
   const toolMutex = new Mutex();
 
   async function getContext(): Promise<McpContext> {
@@ -330,6 +409,7 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
       extraArgs.push(`--proxy-server=${args.proxyServer}`);
     }
     const devtools = args.experimentalDevtools ?? false;
+    await ensureBrowserbaseBrowserURL();
     const browser = args.browserUrl
       ? await ensureBrowserConnected({
           browserURL: args.browserUrl,
@@ -426,6 +506,13 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
     server,
     logDisclaimers,
     close: () => {
+      // Attempt to cleanup Browserbase session if created inline
+      if (bbSessionId && bbApiKey) {
+        void fetch(`https://api.browserbase.com/v1/sessions/${bbSessionId}`, {
+          method: 'DELETE',
+          headers: { 'x-bb-api-key': bbApiKey },
+        }).catch(() => {});
+      }
       void context?.browser.close().catch(error => {
         logger(`Failed to close browser: ${String(error)}`);
       });
@@ -437,7 +524,7 @@ function initializeServer(args: CliArgs): ChromeDevtoolsServer {
 
 function createServer(config: ServerConfig): ChromeDevtoolsServer {
   const args = argsFromConfig(config);
-  return initializeServer(args);
+  return initializeServer(args, config);
 }
 
 app.all('/mcp', async (req: Request, res: Response) => {
