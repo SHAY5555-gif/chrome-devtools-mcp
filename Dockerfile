@@ -16,7 +16,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV TRANSPORT=http
 ENV PUPPETEER_CACHE_DIR=/root/.cache/puppeteer
-ENV SMITHERY_CONFIG=smithery.config.cjs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fonts-liberation \
@@ -60,9 +59,9 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/smithery.yaml ./smithery.yaml
-COPY --from=builder /app/smithery.config.cjs ./smithery.config.cjs
+COPY --from=builder /app/.smithery ./.smithery
 COPY --from=builder /app/LICENSE ./LICENSE
 COPY --from=builder /root/.cache/puppeteer /root/.cache/puppeteer
 
 EXPOSE 8081
-CMD ["node", "build/src/index.js"]
+CMD ["node", ".smithery/index.cjs"]
