@@ -53,6 +53,37 @@ app.use(
 );
 app.use(express.json());
 
+// Expose a well-known JSON Schema for external/self-hosted clients.
+// This enables Configure UI when using the Well-Known Endpoint approach.
+app.get('/.well-known/mcp-config', (_req: Request, res: Response) => {
+  res.json({
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: 'https://server.smithery.ai/.well-known/mcp-config',
+    title: 'MCP Session Configuration',
+    description: 'Configuration for connecting to the Chrome DevTools MCP server',
+    'x-query-style': 'dot+bracket',
+    type: 'object',
+    additionalProperties: true,
+    properties: {
+      headless: {type: 'boolean', default: true},
+      isolated: {type: 'boolean', default: true},
+      viewport: {type: 'string'},
+      browserUrl: {type: 'string', format: 'uri'},
+      browserbase: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          apiKey: {type: 'string', title: 'API Key'},
+          projectId: {type: 'string', title: 'Project ID'},
+          contextId: {type: 'string', title: 'Context ID'},
+          persist: {type: 'boolean', title: 'Persist Context', default: true},
+        },
+        required: ['apiKey'],
+      },
+    },
+  });
+});
+
 interface HttpServerCacheEntry {
   server: ChromeDevtoolsServer;
   logDisclaimersShown: boolean;
@@ -363,14 +394,33 @@ async function createServer(config: ServerConfig): Promise<ChromeDevtoolsServer>
   let derivedConfig = config;
   let browserbaseCleanup: (() => Promise<void>) | undefined;
 
-  if (config.browserbase) {
-    const session = await createBrowserbaseSession(config.browserbase, message => {
+  // Fallback to environment variables if Browserbase config was not provided via query
+  if (!derivedConfig.browserbase && process.env['BROWSERBASE_API_KEY']) {
+    const persistEnv = process.env['BROWSERBASE_PERSIST'];
+    const toBool = (v?: string): boolean | undefined => {
+      if (!v) return undefined;
+      const lowered = v.toLowerCase();
+      return lowered === '1' || lowered === 'true' || lowered === 'yes';
+    };
+    derivedConfig = {
+      ...derivedConfig,
+      browserbase: {
+        apiKey: String(process.env['BROWSERBASE_API_KEY']),
+        projectId: process.env['BROWSERBASE_PROJECT_ID'] || undefined,
+        contextId: process.env['BROWSERBASE_CONTEXT_ID'] || undefined,
+        persist: toBool(persistEnv),
+      },
+    } as ServerConfig;
+  }
+
+  if (derivedConfig.browserbase) {
+    const session = await createBrowserbaseSession(derivedConfig.browserbase, message => {
       console.log(message);
       logger(message);
     });
     derivedConfig = {
-      ...config,
-      browserUrl: config.browserUrl ?? session.browserWs,
+      ...derivedConfig,
+      browserUrl: derivedConfig.browserUrl ?? session.browserWs,
     };
     browserbaseCleanup = session.cleanup;
   }
