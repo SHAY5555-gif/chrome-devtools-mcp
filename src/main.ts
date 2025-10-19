@@ -615,10 +615,7 @@ app.all('/mcp', async (req: Request, res: Response) => {
     }
 
     const config = result.value;
-    // Scope cache by MCP session to isolate browsers per chat
-    // Express normalizes header names to lowercase
-    const clientSessionId = req.header('mcp-session-id') ?? undefined;
-    cacheKey = `${configCacheKey(config)}|session:${clientSessionId ?? 'none'}`;
+    cacheKey = configCacheKey(config);
     cacheEntry = httpServerCache.get(cacheKey);
 
     if (!cacheEntry) {
