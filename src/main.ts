@@ -640,16 +640,30 @@ app.all('/mcp', async (req: Request, res: Response) => {
     const toolName = isToolsCall ? body.params?.name : undefined;
     const isNewPageCall = toolName === 'new_page' || toolName === 'new_page_default';
 
+    // Try to get session ID from multiple sources (for maximum compatibility):
+    // 1. mcp-session-id header (standard MCP header, sent by most clients)
+    // 2. cookie (fallback for browsers/clients that support cookies)
+    let sessionId: string | undefined = req.header('mcp-session-id') ?? undefined;
+
     const cookies = parseCookies(req.header('cookie') ?? undefined);
     let cookieSessionId: string | undefined = cookies['mcp_session'];
-    if (isNewPageCall) {
-      // Force a brand-new session for every new_page call
-      cookieSessionId = crypto.randomUUID();
-      // Keep cookie scoped to this path; avoid Secure for local dev
-      res.setHeader('Set-Cookie', `mcp_session=${cookieSessionId}; Path=/mcp; HttpOnly; SameSite=Lax`);
+
+    // Prefer header-based session ID (more reliable for MCP clients like Claude)
+    if (!sessionId) {
+      sessionId = cookieSessionId;
     }
 
-    cacheKey = cookieSessionId
+    if (isNewPageCall) {
+      // Force a brand-new session for every new_page call
+      sessionId = crypto.randomUUID();
+      cookieSessionId = sessionId;
+      // Keep cookie scoped to this path; avoid Secure for local dev
+      res.setHeader('Set-Cookie', `mcp_session=${cookieSessionId}; Path=/mcp; HttpOnly; SameSite=Lax`);
+      // Also set as response header for clients that use mcp-session-id
+      res.setHeader('Mcp-Session-Id', sessionId);
+    }
+
+    cacheKey = sessionId
       ? `${configCacheKey(config)}|cookie:${cookieSessionId}`
       : configCacheKey(config);
     cacheEntry = httpServerCache.get(cacheKey);
