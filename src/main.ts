@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import cors from 'cors';
+import crypto from 'node:crypto';
 import express, {type Request, type Response} from 'express';
 import {parseAndValidateConfig} from '@smithery/sdk';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -615,7 +616,42 @@ app.all('/mcp', async (req: Request, res: Response) => {
     }
 
     const config = result.value;
-    cacheKey = configCacheKey(config);
+
+    // Cookie-based session stickiness (zero client changes)
+    // Strategy:
+    // - On any new_page/new_page_default call: create a fresh cookie session id and Set-Cookie.
+    // - On other calls: reuse cookie `mcp_session` if present.
+    // - Cache server/browser per cookie session id so parallel chats get isolated browsers.
+    const parseCookies = (cookieHeader?: string) => {
+      const out: Record<string, string> = {};
+      if (!cookieHeader) return out;
+      for (const part of cookieHeader.split(';')) {
+        const [k, v] = part.split('=');
+        if (!k) continue;
+        const key = k.trim();
+        const value = (v ?? '').trim();
+        if (key) out[key] = decodeURIComponent(value);
+      }
+      return out;
+    };
+
+    const body = req.body as any;
+    const isToolsCall = body && body.method === 'tools/call';
+    const toolName = isToolsCall ? body.params?.name : undefined;
+    const isNewPageCall = toolName === 'new_page' || toolName === 'new_page_default';
+
+    const cookies = parseCookies(req.header('cookie') ?? undefined);
+    let cookieSessionId: string | undefined = cookies['mcp_session'];
+    if (isNewPageCall) {
+      // Force a brand-new session for every new_page call
+      cookieSessionId = crypto.randomUUID();
+      // Keep cookie scoped to this path; avoid Secure for local dev
+      res.setHeader('Set-Cookie', `mcp_session=${cookieSessionId}; Path=/mcp; HttpOnly; SameSite=Lax`);
+    }
+
+    cacheKey = cookieSessionId
+      ? `${configCacheKey(config)}|cookie:${cookieSessionId}`
+      : configCacheKey(config);
     cacheEntry = httpServerCache.get(cacheKey);
 
     if (!cacheEntry) {
