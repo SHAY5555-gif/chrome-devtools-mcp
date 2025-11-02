@@ -9,13 +9,19 @@ startCommand:
   configSchema:
     type: object
     additionalProperties: false
+    required: ['provider']
     properties:
+      provider:
+        type: string
+        enum: ['browserbase', 'browseruse']
+        description: 'Choose which remote browser provider to use.'
+        default: 'browserbase'
       defaultUrl:
         type: string
         description: 'Default URL to open with the new_page_default tool.'
       browserbase:
         type: object
-        description: 'Browserbase remote session settings. Use either browserbase OR browseruse, not both.'
+        description: 'Browserbase remote session settings (only used when provider is "browserbase").'
         additionalProperties: false
         properties:
           apiKey:
@@ -36,7 +42,7 @@ startCommand:
             description: 'Optional override path to MCP entrypoint (advanced).'
       browseruse:
         type: object
-        description: 'BrowserUse remote session settings. Use either browserbase OR browseruse, not both.'
+        description: 'BrowserUse remote session settings (only used when provider is "browseruse").'
         additionalProperties: false
         properties:
           apiKey:
@@ -47,13 +53,11 @@ startCommand:
             description: 'Optional override path to MCP entrypoint (advanced).'
   commandFunction: |
     (config) => {
+      const provider = config.provider || 'browserbase';
       const bb = config.browserbase || {};
       const bu = config.browseruse || {};
 
-      // Determine which provider to use (browseruse takes precedence if both are set)
-      const useBrowserUse = !!bu.apiKey;
-
-      if (useBrowserUse) {
+      if (provider === 'browseruse') {
         return {
           command: 'node',
           args: ['scripts/browseruse-bridge-http.mjs'],
@@ -81,11 +85,15 @@ startCommand:
       }
     }
 exampleConfig:
+  # Choose your provider
+  provider: 'browserbase'  # or 'browseruse'
   defaultUrl: 'https://example.com'
-  # Option 1: Use Browserbase
+
+  # If provider is 'browserbase':
   browserbase:
     # Provide apiKey and projectId via Test Profile or secret store
     persist: true
-  # Option 2: Use BrowserUse (comment out browserbase and uncomment this)
+
+  # If provider is 'browseruse':
   # browseruse:
   #   # Provide apiKey via Test Profile or secret store
