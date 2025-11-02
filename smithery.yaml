@@ -95,18 +95,34 @@ startCommand:
             description: 'Whether to persist the Browserbase context.'
             default: true
         required: ['apiKey']
+      browseruse:
+        type: object
+        title: 'BrowserUse'
+        description: 'Launch a remote Chrome via BrowserUse.'
+        additionalProperties: false
+        properties:
+          apiKey:
+            type: string
+            title: 'API Key'
+            description: 'BrowserUse API key used to create browser sessions.'
+            format: password
+        required: ['apiKey']
 
   # Map user configuration to environment variables and CLI flags
   commandFunction: |
     config => {
       const env = { TRANSPORT: 'http' };
       const bb = config.browserbase || {};
+      const bu = config.browseruse || {};
 
       // Prefer nested browserbase.* but allow top-level apiKey as a fallback
       if (bb.apiKey || config.apiKey) env.BROWSERBASE_API_KEY = bb.apiKey || config.apiKey;
       if (bb.projectId) env.BROWSERBASE_PROJECT_ID = bb.projectId;
       if (bb.contextId) env.BROWSERBASE_CONTEXT_ID = bb.contextId;
       if (typeof bb.persist !== 'undefined') env.BROWSERBASE_PERSIST = String(bb.persist);
+
+      // BrowserUse configuration
+      if (bu.apiKey) env.BROWSERUSE_API_KEY = bu.apiKey;
 
       const args = [];
       if (config.browserUrl) args.push('--browserUrl', String(config.browserUrl));

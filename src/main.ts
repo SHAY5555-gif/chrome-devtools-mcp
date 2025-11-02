@@ -39,6 +39,7 @@ import * as scriptTools from './tools/script.js';
 import * as snapshotTools from './tools/snapshot.js';
 import type {ToolDefinition} from './tools/ToolDefinition.js';
 import {createBrowserbaseSession} from './browserbase.js';
+import {createBrowserUseSession} from './browseruse.js';
 
 const PORT = Number(process.env['PORT'] ?? 8081);
 const TRANSPORT = process.env['TRANSPORT'] ?? 'stdio';
@@ -80,6 +81,14 @@ app.get('/.well-known/mcp-config', (_req: Request, res: Response) => {
           projectId: {type: 'string', title: 'Project ID'},
           contextId: {type: 'string', title: 'Context ID'},
           persist: {type: 'boolean', title: 'Persist Context', default: true},
+        },
+        required: ['apiKey'],
+      },
+      browseruse: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          apiKey: {type: 'string', title: 'API Key'},
         },
         required: ['apiKey'],
       },
@@ -129,6 +138,11 @@ export const configSchema = z
         projectId: z.string().optional(),
         contextId: z.string().optional(),
         persist: z.boolean().optional(),
+      })
+      .optional(),
+    browseruse: z
+      .object({
+        apiKey: z.string().min(1, 'BrowserUse API key is required.'),
       })
       .optional(),
   })
@@ -270,7 +284,15 @@ type BrowserbaseConfig = {
   persist?: boolean;
 };
 
-function initializeServer(args: CliArgs, browserbaseConfig?: BrowserbaseConfig): ChromeDevtoolsServer {
+type BrowserUseConfig = {
+  apiKey: string;
+};
+
+function initializeServer(
+  args: CliArgs,
+  browserbaseConfig?: BrowserbaseConfig,
+  browseruseConfig?: BrowserUseConfig,
+): ChromeDevtoolsServer {
   const logFile = args.logFile ? saveLogsToFile(args.logFile) : undefined;
 
   logger(`Starting Chrome DevTools MCP Server v${version}`);
@@ -292,6 +314,9 @@ function initializeServer(args: CliArgs, browserbaseConfig?: BrowserbaseConfig):
   let browserbaseStarted = false;
   let browserbaseCleanup: (() => Promise<void>) | undefined;
 
+  let browseruseStarted = false;
+  let browseruseCleanup: (() => Promise<void>) | undefined;
+
   async function getContext(): Promise<McpContext> {
     const extraArgs: string[] = (args.chromeArg ?? []).map(String);
     if (args.proxyServer) {
@@ -310,6 +335,17 @@ function initializeServer(args: CliArgs, browserbaseConfig?: BrowserbaseConfig):
       args.browserUrl = session.browserWs;
       browserbaseCleanup = session.cleanup;
       browserbaseStarted = true;
+    }
+
+    // Lazily create a BrowserUse session if configured and not yet started
+    if (!args.browserUrl && browseruseConfig && !browseruseStarted) {
+      const session = await createBrowserUseSession(browseruseConfig, message => {
+        console.log(message);
+        logger(message);
+      });
+      args.browserUrl = session.browserWs;
+      browseruseCleanup = session.cleanup;
+      browseruseStarted = true;
     }
     const browser = await connectOrLaunchBrowser({
       browserUrl: args.browserUrl,
@@ -415,6 +451,11 @@ function initializeServer(args: CliArgs, browserbaseConfig?: BrowserbaseConfig):
           console.error(`Failed to clean up Browserbase session: ${String(error)}`);
         });
       }
+      if (browseruseCleanup) {
+        void browseruseCleanup().catch(error => {
+          console.error(`Failed to clean up BrowserUse session: ${String(error)}`);
+        });
+      }
     },
   };
 }
@@ -445,8 +486,21 @@ async function createServer(config: ServerConfig): Promise<ChromeDevtoolsServer>
     } as BrowserbaseConfig;
   }
 
-  // Do not create Browserbase sessions during initialization; defer to first tool use
-  return initializeServer(argsFromConfig(config), bbConfig);
+  // Prepare optional BrowserUse config from request config or environment variables
+  let buConfig: BrowserUseConfig | undefined = config.browseruse
+    ? {
+        apiKey: config.browseruse.apiKey,
+      }
+    : undefined;
+
+  if (!buConfig && process.env['BROWSERUSE_API_KEY']) {
+    buConfig = {
+      apiKey: String(process.env['BROWSERUSE_API_KEY']),
+    };
+  }
+
+  // Do not create Browserbase/BrowserUse sessions during initialization; defer to first tool use
+  return initializeServer(argsFromConfig(config), bbConfig, buConfig);
 }
 
 app.all('/mcp', async (req: Request, res: Response) => {
@@ -553,7 +607,32 @@ async function main() {
     return;
   }
 
-  const server = initializeServer(parseArguments(version));
+  // Read browserbase config from environment variables
+  let bbConfig: BrowserbaseConfig | undefined;
+  if (process.env['BROWSERBASE_API_KEY']) {
+    const persistEnv = process.env['BROWSERBASE_PERSIST'];
+    const toBool = (v?: string): boolean | undefined => {
+      if (!v) return undefined;
+      const lowered = v.toLowerCase();
+      return lowered === '1' || lowered === 'true' || lowered === 'yes' || lowered === 'on';
+    };
+    bbConfig = {
+      apiKey: String(process.env['BROWSERBASE_API_KEY']),
+      projectId: process.env['BROWSERBASE_PROJECT_ID'] || undefined,
+      contextId: process.env['BROWSERBASE_CONTEXT_ID'] || undefined,
+      persist: toBool(persistEnv),
+    };
+  }
+
+  // Read browseruse config from environment variables
+  let buConfig: BrowserUseConfig | undefined;
+  if (process.env['BROWSERUSE_API_KEY']) {
+    buConfig = {
+      apiKey: String(process.env['BROWSERUSE_API_KEY']),
+    };
+  }
+
+  const server = initializeServer(parseArguments(version), bbConfig, buConfig);
   const transport = new StdioServerTransport();
   await server.server.connect(transport);
   logger('Chrome DevTools MCP Server connected');
