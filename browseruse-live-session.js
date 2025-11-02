@@ -75,17 +75,44 @@ async function main() {
   console.log(`  Status:     ${session.status}`);
   console.log(`  CDP Base:   ${cdpBaseUrl}`);
 
-  // Fetch the actual WebSocket URL
-  console.log('\nFetching WebSocket URL from CDP endpoint...');
+  // Fetch the actual WebSocket URL with retries
+  console.log('\nWaiting for browser to be ready...');
   const versionUrl = `${cdpBaseUrl}/json/version`;
-  const versionResponse = await fetch(versionUrl);
+  const maxRetries = 30;
+  const retryDelay = 1000; // 1 second
+  let versionData;
+  let wsUrl;
 
-  if (!versionResponse.ok) {
-    throw new Error(`Failed to fetch ${versionUrl}: ${versionResponse.status}`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const versionResponse = await fetch(versionUrl);
+
+      if (versionResponse.ok) {
+        versionData = await versionResponse.json();
+        if (versionData.webSocketDebuggerUrl) {
+          wsUrl = versionData.webSocketDebuggerUrl;
+          console.log(`Browser ready after ${attempt} attempt(s)`);
+          break;
+        }
+      }
+
+      if (attempt < maxRetries) {
+        process.stdout.write(`  Attempt ${attempt}/${maxRetries}...\r`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    } catch (error) {
+      if (attempt < maxRetries) {
+        process.stdout.write(`  Attempt ${attempt}/${maxRetries} (error: ${error.message})...\r`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      } else {
+        throw error;
+      }
+    }
   }
 
-  const versionData = await versionResponse.json();
-  const wsUrl = versionData.webSocketDebuggerUrl;
+  if (!wsUrl) {
+    throw new Error(`Browser did not become ready after ${maxRetries} attempts`);
+  }
 
   console.log('\nConnect endpoints:');
   console.log(`  CDP Base URL: ${cdpBaseUrl}`);

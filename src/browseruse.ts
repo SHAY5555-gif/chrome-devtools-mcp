@@ -81,22 +81,51 @@ export async function createBrowserUseSession(
   log(`BrowserUse session ready (ID ${sessionId}, status ${session.status}).`);
   log(`CDP Base URL: ${cdpBaseUrl}`);
 
-  // Fetch the actual WebSocket URL from the CDP endpoint
+  // Fetch the actual WebSocket URL from the CDP endpoint with retries
+  // The browser might take a few seconds to start up
   const versionUrl = `${cdpBaseUrl}/json/version`;
-  const versionResponse = await fetch(versionUrl);
+  const maxRetries = 30;
+  const retryDelay = 1000; // 1 second
+  let versionData: {webSocketDebuggerUrl?: string} | undefined;
 
-  if (!versionResponse.ok) {
+  log('Waiting for browser to be ready...');
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const versionResponse = await fetch(versionUrl);
+
+      if (versionResponse.ok) {
+        const data = await versionResponse.json();
+        if (data && typeof data === 'object' && 'webSocketDebuggerUrl' in data) {
+          versionData = data as {webSocketDebuggerUrl?: string};
+          if (versionData.webSocketDebuggerUrl) {
+            log(`Browser ready after ${attempt} attempt(s)`);
+            break;
+          }
+        }
+      }
+
+      if (attempt < maxRetries) {
+        log(`Browser not ready yet (attempt ${attempt}/${maxRetries}), retrying in ${retryDelay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    } catch (error) {
+      if (attempt < maxRetries) {
+        log(`Error connecting (attempt ${attempt}/${maxRetries}): ${String(error)}, retrying...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  if (!versionData?.webSocketDebuggerUrl) {
     throw new Error(
-      `Failed to fetch CDP version from ${versionUrl}: ${versionResponse.status} ${versionResponse.statusText}`,
+      `Browser did not become ready after ${maxRetries} attempts. CDP endpoint: ${versionUrl}`,
     );
   }
 
-  const versionData = await versionResponse.json();
   const browserWs = versionData.webSocketDebuggerUrl;
-
-  if (!browserWs) {
-    throw new Error(`No webSocketDebuggerUrl found in CDP version response from ${versionUrl}`);
-  }
 
   log('BrowserUse DevTools endpoints:');
   log(`  Browser WS: ${browserWs}`);
@@ -107,12 +136,9 @@ export async function createBrowserUseSession(
       return;
     }
     cleaned = true;
-    try {
-      await browserUseRequest(options.apiKey, `/browsers/${sessionId}`, {method: 'DELETE'});
-      log(`BrowserUse session ${sessionId} cleaned up.`);
-    } catch (error) {
-      log(`Failed to clean up BrowserUse session ${sessionId}: ${String(error)}`);
-    }
+    // Note: BrowserUse sessions expire automatically after timeout
+    // There is no DELETE API endpoint available
+    log(`BrowserUse session ${sessionId} will expire automatically at timeout.`);
   };
 
   return {

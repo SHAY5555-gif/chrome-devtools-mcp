@@ -93,24 +93,47 @@ async function main() {
     throw new Error('No CDP URL returned from BrowserUse API. Response: ' + JSON.stringify(session));
   }
 
-  log(`Fetching WebSocket URL from ${cdpBaseUrl}/json/version...`);
-
-  // Fetch the actual WebSocket URL from the CDP endpoint
+  // Fetch the actual WebSocket URL from the CDP endpoint with retries
+  // The browser might take a few seconds to start up
   const versionUrl = `${cdpBaseUrl}/json/version`;
-  const versionResponse = await fetch(versionUrl);
+  const maxRetries = 30;
+  const retryDelay = 1000; // 1 second
+  let versionData;
+  let browserWs;
 
-  if (!versionResponse.ok) {
-    const text = await versionResponse.text().catch(() => '');
-    throw new Error(
-      `Failed to fetch CDP version from ${versionUrl}: ${versionResponse.status} ${versionResponse.statusText}\n${text}`,
-    );
+  log('Waiting for browser to be ready...');
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const versionResponse = await fetch(versionUrl);
+
+      if (versionResponse.ok) {
+        versionData = await versionResponse.json();
+        if (versionData.webSocketDebuggerUrl) {
+          browserWs = versionData.webSocketDebuggerUrl;
+          log(`Browser ready after ${attempt} attempt(s)`);
+          break;
+        }
+      }
+
+      if (attempt < maxRetries) {
+        log(`Browser not ready yet (attempt ${attempt}/${maxRetries}), retrying in ${retryDelay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    } catch (error) {
+      if (attempt < maxRetries) {
+        log(`Error connecting (attempt ${attempt}/${maxRetries}): ${error.message}, retrying...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      } else {
+        throw error;
+      }
+    }
   }
 
-  const versionData = await versionResponse.json();
-  const browserWs = versionData.webSocketDebuggerUrl;
-
   if (!browserWs) {
-    throw new Error(`No webSocketDebuggerUrl found in CDP version response. Got: ${JSON.stringify(versionData)}`);
+    throw new Error(
+      `Browser did not become ready after ${maxRetries} attempts. CDP endpoint: ${versionUrl}`,
+    );
   }
 
   // Forward any extra args intended for chrome-devtools-mcp (filter out our own flags)
@@ -148,12 +171,9 @@ async function main() {
   const cleanup = async (exitCode) => {
     if (cleanedUp) return exitCode;
     cleanedUp = true;
-    try {
-      await request(`/browsers/${sessionId}`, { method: 'DELETE' });
-      log(`BrowserUse session ${sessionId} deleted.`);
-    } catch (err) {
-      log(`Failed to cleanup session: ${err.message}`);
-    }
+    // Note: BrowserUse sessions expire automatically after timeout
+    // There is no DELETE API endpoint available
+    log(`BrowserUse session ${sessionId} will expire automatically.`);
     return exitCode;
   };
 
