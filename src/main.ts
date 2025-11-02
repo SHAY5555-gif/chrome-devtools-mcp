@@ -326,39 +326,26 @@ function initializeServer(
     const currentBrowser =
       context?.browser && context.browser.connected ? context.browser : undefined;
 
-    // Lazily create a BrowserUse session if configured and not yet started
-    // TRY BROWSERUSE FIRST (if configured)
-    if (!args.browserUrl && browseruseConfig && !browseruseStarted) {
-      try {
-        const session = await createBrowserUseSession(browseruseConfig, message => {
-          console.log(message);
-          logger(message);
-        });
-        args.browserUrl = session.browserWs;
-        browseruseCleanup = session.cleanup;
-        browseruseStarted = true;
-      } catch (error) {
-        console.error('Failed to create BrowserUse session:', error);
-        logger(`Failed to create BrowserUse session: ${String(error)}`);
-        throw error;
-      }
+    // Lazily create a Browserbase session if configured and not yet started
+    if (!args.browserUrl && browserbaseConfig && !browserbaseStarted) {
+      const session = await createBrowserbaseSession(browserbaseConfig, message => {
+        console.log(message);
+        logger(message);
+      });
+      args.browserUrl = session.browserWs;
+      browserbaseCleanup = session.cleanup;
+      browserbaseStarted = true;
     }
 
-    // Lazily create a Browserbase session if configured and BrowserUse wasn't used
-    if (!args.browserUrl && browserbaseConfig && !browserbaseStarted) {
-      try {
-        const session = await createBrowserbaseSession(browserbaseConfig, message => {
-          console.log(message);
-          logger(message);
-        });
-        args.browserUrl = session.browserWs;
-        browserbaseCleanup = session.cleanup;
-        browserbaseStarted = true;
-      } catch (error) {
-        console.error('Failed to create Browserbase session:', error);
-        logger(`Failed to create Browserbase session: ${String(error)}`);
-        throw error;
-      }
+    // Lazily create a BrowserUse session if configured and not yet started
+    if (!args.browserUrl && browseruseConfig && !browseruseStarted) {
+      const session = await createBrowserUseSession(browseruseConfig, message => {
+        console.log(message);
+        logger(message);
+      });
+      args.browserUrl = session.browserWs;
+      browseruseCleanup = session.cleanup;
+      browseruseStarted = true;
     }
     const browser = await connectOrLaunchBrowser({
       browserUrl: args.browserUrl,
