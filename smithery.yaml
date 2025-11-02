@@ -8,42 +8,22 @@ startCommand:
     TRANSPORT: http
   configSchema:
     type: object
-    additionalProperties: false
-    required: ['provider']
     properties:
-      provider:
-        type: string
-        title: 'Browser Provider'
-        description: 'Select your remote browser provider'
-        enum:
-          - browserbase
-          - browseruse
-        default: browserbase
       defaultUrl:
         type: string
         title: 'Default URL'
         description: 'Default URL to open with the new_page_default tool (optional)'
-      browserbaseApiKey:
-        type: string
-        title: 'Browserbase API Key'
-        description: 'Required when provider is "browserbase"'
-      browserbaseProjectId:
-        type: string
-        title: 'Browserbase Project ID'
-        description: 'Required when provider is "browserbase"'
-      browserbaseContextId:
-        type: string
-        title: 'Browserbase Context ID'
-        description: 'Optional persistent context (browserbase only)'
-      browserbasePersist:
-        type: boolean
-        title: 'Persist Browserbase Context'
-        description: 'Persist context across runs (browserbase only)'
-        default: true
-      browseruseApiKey:
-        type: string
-        title: 'BrowserUse API Key'
-        description: 'Required when provider is "browseruse"'
+      browseruse:
+        type: object
+        title: 'BrowserUse Configuration'
+        description: 'Configure BrowserUse as your remote browser provider'
+        properties:
+          apiKey:
+            type: string
+            title: 'API Key'
+            description: 'Your BrowserUse API key'
+        required: ['apiKey']
+    required: ['browseruse']
   commandFunction: |
     (config) => {
       const env = {
@@ -54,25 +34,9 @@ startCommand:
         env.MCP_DEFAULT_URL = config.defaultUrl;
       }
 
-      if (config.provider === 'browseruse') {
-        // BrowserUse configuration
-        if (config.browseruseApiKey) {
-          env.BROWSERUSE_API_KEY = config.browseruseApiKey;
-        }
-      } else {
-        // Browserbase configuration (default)
-        if (config.browserbaseApiKey) {
-          env.BROWSERBASE_API_KEY = config.browserbaseApiKey;
-        }
-        if (config.browserbaseProjectId) {
-          env.BROWSERBASE_PROJECT_ID = config.browserbaseProjectId;
-        }
-        if (config.browserbaseContextId) {
-          env.BROWSERBASE_CONTEXT_ID = config.browserbaseContextId;
-        }
-        if (config.browserbasePersist !== undefined) {
-          env.BROWSERBASE_PERSIST = String(!!config.browserbasePersist);
-        }
+      // BrowserUse configuration
+      if (config.browseruse?.apiKey) {
+        env.BROWSERUSE_API_KEY = config.browseruse.apiKey;
       }
 
       return {
@@ -82,15 +46,6 @@ startCommand:
       };
     }
 exampleConfig:
-  # Select provider
-  provider: 'browserbase'  # or 'browseruse'
   defaultUrl: 'https://example.com'
-
-  # For Browserbase (when provider='browserbase'):
-  # browserbaseApiKey: 'bb_xxx'  # Provide via Test Profile
-  # browserbaseProjectId: 'xxx'   # Provide via Test Profile
-  # browserbaseContextId: 'xxx'   # Optional
-  # browserbasePersist: true      # Optional
-
-  # For BrowserUse (when provider='browseruse'):
-  # browseruseApiKey: 'bu_xxx'    # Provide via Test Profile
+  browseruse:
+    apiKey: 'bu_xxx'  # Provide via Test Profile
