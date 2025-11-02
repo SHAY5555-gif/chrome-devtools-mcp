@@ -22,6 +22,18 @@ startCommand:
             type: string
             title: 'API Key'
             description: 'Your BrowserUse API key'
+          proxyCountryCode:
+            type: string
+            title: 'Proxy Country Code'
+            description: 'Optional proxy country code (e.g., US, GB, DE)'
+          startUrl:
+            type: string
+            title: 'Start URL'
+            description: 'Optional URL to start the browser session with'
+          profileId:
+            type: string
+            title: 'Profile ID'
+            description: 'Optional browser profile ID for persistent sessions'
         required: ['apiKey']
     required: ['browseruse']
   commandFunction: |
@@ -38,6 +50,15 @@ startCommand:
       if (config.browseruse?.apiKey) {
         env.BROWSERUSE_API_KEY = config.browseruse.apiKey;
       }
+      if (config.browseruse?.proxyCountryCode) {
+        env.BROWSERUSE_PROXY_COUNTRY_CODE = config.browseruse.proxyCountryCode;
+      }
+      if (config.browseruse?.startUrl) {
+        env.BROWSERUSE_START_URL = config.browseruse.startUrl;
+      }
+      if (config.browseruse?.profileId) {
+        env.BROWSERUSE_PROFILE_ID = config.browseruse.profileId;
+      }
 
       return {
         command: 'node',
@@ -49,3 +70,6 @@ exampleConfig:
   defaultUrl: 'https://example.com'
   browseruse:
     apiKey: 'bu_xxx'  # Provide via Test Profile
+    # proxyCountryCode: 'US'  # Optional
+    # startUrl: 'https://example.com'  # Optional
+    # profileId: 'profile_123'  # Optional

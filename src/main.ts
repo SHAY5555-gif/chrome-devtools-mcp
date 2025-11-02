@@ -142,6 +142,9 @@ export const configSchema = z
     browseruse: z
       .object({
         apiKey: z.string().min(1, 'BrowserUse API key is required.'),
+        proxyCountryCode: z.string().optional(),
+        startUrl: z.string().optional(),
+        profileId: z.string().optional(),
       })
       .optional(),
   })
@@ -278,6 +281,9 @@ function argsFromConfig(config: ServerConfig): CliArgs {
 
 type BrowserUseConfig = {
   apiKey: string;
+  proxyCountryCode?: string;
+  startUrl?: string;
+  profileId?: string;
 };
 
 function initializeServer(
@@ -456,12 +462,18 @@ async function createServer(config: ServerConfig): Promise<ChromeDevtoolsServer>
   let buConfig: BrowserUseConfig | undefined = config.browseruse
     ? {
         apiKey: config.browseruse.apiKey,
+        proxyCountryCode: config.browseruse.proxyCountryCode,
+        startUrl: config.browseruse.startUrl,
+        profileId: config.browseruse.profileId,
       }
     : undefined;
 
   if (!buConfig && process.env['BROWSERUSE_API_KEY']) {
     buConfig = {
       apiKey: String(process.env['BROWSERUSE_API_KEY']),
+      proxyCountryCode: process.env['BROWSERUSE_PROXY_COUNTRY_CODE'],
+      startUrl: process.env['BROWSERUSE_START_URL'],
+      profileId: process.env['BROWSERUSE_PROFILE_ID'],
     };
   }
 
@@ -578,6 +590,9 @@ async function main() {
   if (process.env['BROWSERUSE_API_KEY']) {
     buConfig = {
       apiKey: String(process.env['BROWSERUSE_API_KEY']),
+      proxyCountryCode: process.env['BROWSERUSE_PROXY_COUNTRY_CODE'],
+      startUrl: process.env['BROWSERUSE_START_URL'],
+      profileId: process.env['BROWSERUSE_PROFILE_ID'],
     };
   }
 
