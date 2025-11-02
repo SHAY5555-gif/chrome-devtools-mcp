@@ -7,11 +7,11 @@
 import './polyfill.js';
 
 import assert from 'node:assert';
+import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import cors from 'cors';
-import crypto from 'node:crypto';
 import express, {type Request, type Response} from 'express';
 import {parseAndValidateConfig} from '@smithery/sdk';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -21,10 +21,8 @@ import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import {SetLevelRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {z} from 'zod';
 
-import puppeteer from 'puppeteer-core';
-import type {Browser} from 'puppeteer-core';
 import type {Channel} from './browser.js';
-import {launch} from './browser.js';
+import {connectOrLaunchBrowser} from './browserManager.js';
 import {parseArguments} from './cli.js';
 import {logger, saveLogsToFile} from './logger.js';
 import {McpContext} from './McpContext.js';
@@ -40,117 +38,62 @@ import * as screenshotTools from './tools/screenshot.js';
 import * as scriptTools from './tools/script.js';
 import * as snapshotTools from './tools/snapshot.js';
 import type {ToolDefinition} from './tools/ToolDefinition.js';
+import {createBrowserbaseSession} from './browserbase.js';
+import {createBrowserUseSession} from './browseruse.js';
 
 const PORT = Number(process.env['PORT'] ?? 8081);
 const TRANSPORT = process.env['TRANSPORT'] ?? 'stdio';
 
 const app = express();
+app.disable('x-powered-by');
+// CORS: allow all origins and reflect requested headers; also handle preflight
 app.use(
   cors({
     origin: '*',
-    exposedHeaders: ['Mcp-Session-Id', 'mcp-protocol-version'],
-    allowedHeaders: ['Content-Type', 'mcp-session-id'],
+    exposedHeaders: ['mcp-session-id', 'mcp-protocol-version'],
+    // Do not restrict allowedHeaders; let cors reflect Access-Control-Request-Headers automatically
   }),
 );
+app.options('*', cors());
 app.use(express.json());
 
-// Expose JSON Schema for session configuration (for external/container hosting)
-// This enables Smithery and hosting platforms to discover configurable fields
-// without authentication to validate that CONFIGURE UI is available.
+// Expose a well-known JSON Schema for external/self-hosted clients.
+// This enables Configure UI when using the Well-Known Endpoint approach.
 app.get('/.well-known/mcp-config', (_req: Request, res: Response) => {
-  const schema = {
+  res.json({
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: 'https://server.smithery.ai/.well-known/mcp-config',
+    title: 'MCP Session Configuration',
+    description: 'Configuration for connecting to the Chrome DevTools MCP server',
+    'x-query-style': 'dot+bracket',
     type: 'object',
-    // Keep in sync with smithery.yaml; allow extra provider-specific keys
     additionalProperties: true,
     properties: {
-      apiKey: {
-        type: 'string',
-        description: 'Your API key',
-      },
-      browserUrl: {
-        type: 'string',
-        format: 'uri',
-        description: 'Existing Chrome WebSocket debugging URL to connect to.',
-      },
-      headless: {
-        type: 'boolean',
-        description: 'Run Chrome in headless mode.',
-        default: true,
-      },
-      executablePath: {
-        type: 'string',
-        description: 'Absolute path to a Chrome executable inside the container.',
-      },
-      isolated: {
-        type: 'boolean',
-        description: 'Launch Chrome with an isolated user data dir.',
-        default: true,
-      },
-      customDevtools: {
-        type: 'string',
-        description: 'Path to a custom DevTools frontend bundle.',
-      },
-      channel: {
-        type: 'string',
-        enum: ['stable', 'beta', 'canary', 'dev'],
-        description: 'Chrome channel to use when launching the bundled browser.',
-      },
-      logFile: {
-        type: 'string',
-        description:
-          'Optional path inside the container where debug logs should be written.',
-      },
-      viewport: {
-        type: 'string',
-        description:
-          'Viewport size for launched Chrome instances, for example 1280x720.',
-      },
-      proxyServer: {
-        type: 'string',
-        description:
-          'Proxy server definition to forward Chrome network traffic through.',
-      },
-      acceptInsecureCerts: {
-        type: 'boolean',
-        description: 'Ignore TLS certificate errors when launching Chrome.',
-      },
-      experimentalDevtools: {
-        type: 'boolean',
-        description: 'Enable DevTools automation targets (experimental).',
-      },
-      chromeArg: {
-        type: 'array',
-        description: 'Additional command-line switches to pass to Chrome.',
-        items: {type: 'string'},
-      },
+      headless: {type: 'boolean', default: true},
+      isolated: {type: 'boolean', default: true},
+      viewport: {type: 'string'},
+      browserUrl: {type: 'string', format: 'uri'},
       browserbase: {
         type: 'object',
-        description: 'Launch a remote Chrome via Browserbase (scanner-friendly).',
         additionalProperties: false,
         properties: {
-          apiKey: {
-            type: 'string',
-            description: 'Browserbase API key used to create sessions.',
-          },
-          projectId: {
-            type: 'string',
-            description: 'Browserbase project ID to associate sessions with.',
-          },
-          contextId: {
-            type: 'string',
-            description: 'Optional persistent context ID.',
-          },
-          persist: {
-            type: 'boolean',
-            description: 'Whether to persist the Browserbase context.',
-            default: true,
-          },
+          apiKey: {type: 'string', title: 'API Key'},
+          projectId: {type: 'string', title: 'Project ID'},
+          contextId: {type: 'string', title: 'Context ID'},
+          persist: {type: 'boolean', title: 'Persist Context', default: true},
         },
+        required: ['apiKey'],
+      },
+      browseruse: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          apiKey: {type: 'string', title: 'API Key'},
+        },
+        required: ['apiKey'],
       },
     },
-  } as const;
-
-  res.json(schema);
+  });
 });
 
 interface HttpServerCacheEntry {
@@ -177,7 +120,6 @@ const viewportSchema = z
 
 export const configSchema = z
   .object({
-    apiKey: z.string().optional(),
     browserUrl: z.string().url().optional(),
     headless: z.boolean().optional(),
     executablePath: z.string().optional(),
@@ -192,12 +134,16 @@ export const configSchema = z
     chromeArg: z.array(z.string()).optional(),
     browserbase: z
       .object({
-        apiKey: z.string().optional(),
+        apiKey: z.string().min(1, 'Browserbase API key is required.'),
         projectId: z.string().optional(),
         contextId: z.string().optional(),
         persist: z.boolean().optional(),
       })
-      .passthrough()
+      .optional(),
+    browseruse: z
+      .object({
+        apiKey: z.string().min(1, 'BrowserUse API key is required.'),
+      })
       .optional(),
   })
   .passthrough();
@@ -211,8 +157,7 @@ interface ChromeDevtoolsServer {
 }
 
 function readPackageJson(): {version?: string} {
-  const currentDir = import.meta.dirname;
-  const packageJsonPath = path.join(currentDir, '..', '..', 'package.json');
+  const packageJsonPath = path.resolve(process.cwd(), 'package.json');
   if (!fs.existsSync(packageJsonPath)) {
     return {};
   }
@@ -238,10 +183,26 @@ function normalizeViewport(viewport?: ServerConfig['viewport']): string | undefi
 }
 
 function configCacheKey(config: ServerConfig): string {
-  const normalizedEntries = Object.entries({
+  const sanitizedConfig: Record<string, unknown> = {
     ...config,
     viewport: normalizeViewport(config.viewport),
-  })
+  };
+
+  if (sanitizedConfig.browserbase && typeof sanitizedConfig.browserbase === 'object') {
+    const browserbase = sanitizedConfig.browserbase as {
+      apiKey?: string;
+      [key: string]: unknown;
+    };
+    if (browserbase.apiKey) {
+      const hash = createHash('sha256').update(browserbase.apiKey).digest('hex');
+      sanitizedConfig.browserbase = {
+        ...browserbase,
+        apiKey: `sha256:${hash}`,
+      };
+    }
+  }
+
+  const normalizedEntries = Object.entries(sanitizedConfig)
     .filter(([, value]) => value !== undefined)
     .sort(([a], [b]) => a.localeCompare(b));
 
@@ -265,13 +226,10 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 function argsFromConfig(config: ServerConfig): CliArgs {
   const argv = ['node', 'server'];
 
-  const envBrowserUrl = process.env['BROWSERBASE_BROWSER_WS'];
   if (config.browserUrl) {
     argv.push('--browserUrl', config.browserUrl);
-  } else if (envBrowserUrl) {
-    argv.push('--browserUrl', envBrowserUrl);
   }
-  const headless = config.headless ?? true;
+  const headless = config.headless ?? false;
   if (headless) {
     argv.push('--headless');
   } else {
@@ -280,9 +238,11 @@ function argsFromConfig(config: ServerConfig): CliArgs {
   if (config.executablePath) {
     argv.push('--executablePath', config.executablePath);
   }
-  const isolated = config.isolated ?? true;
+  const isolated = config.isolated ?? false;
   if (isolated) {
     argv.push('--isolated');
+  } else {
+    argv.push('--no-isolated');
   }
   if (config.customDevtools) {
     argv.push('--customDevtools', config.customDevtools);
@@ -317,7 +277,22 @@ function argsFromConfig(config: ServerConfig): CliArgs {
   return parseArguments(version, argv);
 }
 
-function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeDevtoolsServer {
+type BrowserbaseConfig = {
+  apiKey: string;
+  projectId?: string;
+  contextId?: string;
+  persist?: boolean;
+};
+
+type BrowserUseConfig = {
+  apiKey: string;
+};
+
+function initializeServer(
+  args: CliArgs,
+  browserbaseConfig?: BrowserbaseConfig,
+  browseruseConfig?: BrowserUseConfig,
+): ChromeDevtoolsServer {
   const logFile = args.logFile ? saveLogsToFile(args.logFile) : undefined;
 
   logger(`Starting Chrome DevTools MCP Server v${version}`);
@@ -334,77 +309,13 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
   });
 
   let context: McpContext | undefined;
-  let browserInstance: Browser | undefined;
-  // Browserbase session lifecycle (optional)
-  let bbSessionId: string | undefined;
-  let bbApiKey: string | undefined;
-
-  async function ensureBrowserbaseBrowserURL(forceNew = false): Promise<void> {
-    if (args.browserUrl && !forceNew) {
-      return;
-    }
-    const bb = originalConfig?.browserbase;
-    if (!bb?.apiKey || !bb?.projectId) {
-      return;
-    }
-    bbApiKey = bb.apiKey;
-
-    // Create session
-    const res = await fetch('https://api.browserbase.com/v1/sessions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-bb-api-key': bb.apiKey,
-      },
-      body: JSON.stringify({
-        projectId: bb.projectId,
-        keepAlive: true,
-        browserSettings: {
-          context: bb.contextId
-            ? {id: bb.contextId, persist: bb.persist ?? true}
-            : undefined,
-        },
-        userMetadata: {mcp: 'true', bridge: 'inline'},
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(
-        `Failed to create Browserbase session: ${res.status} ${res.statusText}\n${text}`,
-      );
-    }
-    const session = (await res.json()) as {
-      id: string;
-      signingKey: string;
-    };
-    bbSessionId = session.id;
-
-    const params = new URLSearchParams();
-    params.set('sessionId', session.id);
-    params.set('signingKey', session.signingKey);
-    params.set('apiKey', bb.apiKey);
-
-    // version endpoint returns webSocketDebuggerUrl for the browser
-    const connectUrl = `https://connect.browserbase.com/json/version?${params.toString()}`;
-    const versionRes = await fetch(connectUrl);
-    if (!versionRes.ok) {
-      const text = await versionRes.text().catch(() => '');
-      throw new Error(
-        `Failed to fetch Browserbase connect version: ${versionRes.status} ${versionRes.statusText}\n${text}`,
-      );
-    }
-    const version = (await versionRes.json()) as {webSocketDebuggerUrl: string};
-    const ensureWss = (url: string) =>
-      url.startsWith('wss://')
-        ? url
-        : url.startsWith('ws://')
-          ? `wss://${url.slice('ws://'.length)}`
-          : url;
-    const browserWs = `${ensureWss(version.webSocketDebuggerUrl)}?${params.toString()}`;
-    // Mutate args to force connect mode
-    args.browserUrl = browserWs;
-  }
   const toolMutex = new Mutex();
+
+  let browserbaseStarted = false;
+  let browserbaseCleanup: (() => Promise<void>) | undefined;
+
+  let browseruseStarted = false;
+  let browseruseCleanup: (() => Promise<void>) | undefined;
 
   async function getContext(): Promise<McpContext> {
     const extraArgs: string[] = (args.chromeArg ?? []).map(String);
@@ -412,82 +323,48 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
       extraArgs.push(`--proxy-server=${args.proxyServer}`);
     }
     const devtools = args.experimentalDevtools ?? false;
-    await ensureBrowserbaseBrowserURL();
+    const currentBrowser =
+      context?.browser && context.browser.connected ? context.browser : undefined;
 
-    // Reuse per-server browser if still connected
-    if (browserInstance && (browserInstance as any).isConnected?.()) {
-      // ok
-    } else if (browserInstance && (browserInstance as any).connected) {
-      // ok for older puppeteer typings
-    } else {
-      browserInstance = undefined;
-      try {
-        if (args.browserUrl) {
-          // Connect to remote (e.g., Browserbase) without global cache
-          const isWs = args.browserUrl.startsWith('ws://') || args.browserUrl.startsWith('wss://');
-          const connectOpts: Record<string, unknown> = {
-            targetFilter: (target: any) => {
-              const ignored = new Set(['chrome://', 'chrome-extension://', 'chrome-untrusted://']);
-              if (!devtools) ignored.add('devtools://');
-              const url = target.url?.() ?? '';
-              if (url === 'chrome://newtab/') return true;
-              for (const prefix of ignored) {
-                if (url.startsWith(prefix)) return false;
-              }
-              return true;
-            },
-            defaultViewport: null,
-            handleDevToolsAsPage: devtools as any,
-          };
-          if (isWs) {
-            (connectOpts as any).browserWSEndpoint = args.browserUrl;
-          } else {
-            (connectOpts as any).browserURL = args.browserUrl;
-          }
-          browserInstance = await puppeteer.connect(connectOpts as any);
-        } else {
-          // Launch local Chrome without global cache
-          browserInstance = await launch({
-            headless: args.headless,
-            executablePath: args.executablePath,
-            customDevTools: args.customDevtools,
-            channel: args.channel as Channel,
-            isolated: args.isolated,
-            logFile,
-            viewport: args.viewport,
-            args: extraArgs,
-            acceptInsecureCerts: args.acceptInsecureCerts,
-            devtools,
-          });
-        }
-      } catch (err) {
-        // If we failed to connect in Browserbase mode, create a fresh session
-        if (originalConfig?.browserbase) {
-          logger('Existing Browserbase session invalid; creating a new one.');
-          await ensureBrowserbaseBrowserURL(true);
-          browserInstance = await puppeteer.connect({
-            handleDevToolsAsPage: devtools as any,
-            defaultViewport: null,
-            targetFilter: (target: any) => {
-              const ignored = new Set(['chrome://', 'chrome-extension://', 'chrome-untrusted://']);
-              if (!devtools) ignored.add('devtools://');
-              const url = target.url?.() ?? '';
-              if (url === 'chrome://newtab/') return true;
-              for (const prefix of ignored) {
-                if (url.startsWith(prefix)) return false;
-              }
-              return true;
-            },
-            browserWSEndpoint: args.browserUrl!,
-          } as any);
-        } else {
-          throw err;
-        }
-      }
+    // Lazily create a Browserbase session if configured and not yet started
+    if (!args.browserUrl && browserbaseConfig && !browserbaseStarted) {
+      const session = await createBrowserbaseSession(browserbaseConfig, message => {
+        console.log(message);
+        logger(message);
+      });
+      args.browserUrl = session.browserWs;
+      browserbaseCleanup = session.cleanup;
+      browserbaseStarted = true;
     }
 
-    if (!context || (browserInstance && context.browser !== browserInstance)) {
-      context = await McpContext.from(browserInstance!, logger);
+    // Lazily create a BrowserUse session if configured and not yet started
+    if (!args.browserUrl && browseruseConfig && !browseruseStarted) {
+      const session = await createBrowserUseSession(browseruseConfig, message => {
+        console.log(message);
+        logger(message);
+      });
+      args.browserUrl = session.browserWs;
+      browseruseCleanup = session.cleanup;
+      browseruseStarted = true;
+    }
+    const browser = await connectOrLaunchBrowser({
+      browserUrl: args.browserUrl,
+      headless: args.headless,
+      executablePath: args.executablePath,
+      customDevTools: args.customDevtools,
+      channel: args.channel as Channel | undefined,
+      isolated: args.isolated,
+      logFile,
+      viewport: args.viewport,
+      chromeArgs: extraArgs,
+      acceptInsecureCerts: args.acceptInsecureCerts,
+      devtools,
+      currentBrowser,
+      log: logger,
+    });
+
+    if (!context || context.browser !== browser) {
+      context = await McpContext.from(browser, logger);
     }
     return context;
   }
@@ -525,15 +402,8 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
               content,
             };
           } catch (error) {
-            const errorText = (() => {
-              if (error instanceof Error) return error.message;
-              try {
-                // Provide more context than "[object Object]" when possible
-                return JSON.stringify(error);
-              } catch {
-                return String(error);
-              }
-            })();
+            const errorText =
+              error instanceof Error ? error.message : String(error);
 
             return {
               content: [
@@ -571,25 +441,66 @@ function initializeServer(args: CliArgs, originalConfig?: ServerConfig): ChromeD
     server,
     logDisclaimers,
     close: () => {
-      // Attempt to cleanup Browserbase session if created inline
-      if (bbSessionId && bbApiKey) {
-        void fetch(`https://api.browserbase.com/v1/sessions/${bbSessionId}`, {
-          method: 'DELETE',
-          headers: { 'x-bb-api-key': bbApiKey },
-        }).catch(() => {});
-      }
       void context?.browser.close().catch(error => {
         logger(`Failed to close browser: ${String(error)}`);
       });
       server.server.close();
       logFile?.end();
+      if (browserbaseCleanup) {
+        void browserbaseCleanup().catch(error => {
+          console.error(`Failed to clean up Browserbase session: ${String(error)}`);
+        });
+      }
+      if (browseruseCleanup) {
+        void browseruseCleanup().catch(error => {
+          console.error(`Failed to clean up BrowserUse session: ${String(error)}`);
+        });
+      }
     },
   };
 }
 
-function createServer(config: ServerConfig): ChromeDevtoolsServer {
-  const args = argsFromConfig(config);
-  return initializeServer(args, config);
+async function createServer(config: ServerConfig): Promise<ChromeDevtoolsServer> {
+  // Prepare optional Browserbase config from request config or environment variables
+  let bbConfig: BrowserbaseConfig | undefined = config.browserbase
+    ? {
+        apiKey: config.browserbase.apiKey,
+        projectId: config.browserbase.projectId,
+        contextId: config.browserbase.contextId,
+        persist: config.browserbase.persist,
+      }
+    : undefined;
+
+  if (!bbConfig && process.env['BROWSERBASE_API_KEY']) {
+    const persistEnv = process.env['BROWSERBASE_PERSIST'];
+    const toBool = (v?: string): boolean | undefined => {
+      if (!v) return undefined;
+      const lowered = v.toLowerCase();
+      return lowered === '1' || lowered === 'true' || lowered === 'yes' || lowered === 'on';
+    };
+    bbConfig = {
+      apiKey: String(process.env['BROWSERBASE_API_KEY']),
+      projectId: process.env['BROWSERBASE_PROJECT_ID'] || undefined,
+      contextId: process.env['BROWSERBASE_CONTEXT_ID'] || undefined,
+      persist: toBool(persistEnv),
+    } as BrowserbaseConfig;
+  }
+
+  // Prepare optional BrowserUse config from request config or environment variables
+  let buConfig: BrowserUseConfig | undefined = config.browseruse
+    ? {
+        apiKey: config.browseruse.apiKey,
+      }
+    : undefined;
+
+  if (!buConfig && process.env['BROWSERUSE_API_KEY']) {
+    buConfig = {
+      apiKey: String(process.env['BROWSERUSE_API_KEY']),
+    };
+  }
+
+  // Do not create Browserbase/BrowserUse sessions during initialization; defer to first tool use
+  return initializeServer(argsFromConfig(config), bbConfig, buConfig);
 }
 
 app.all('/mcp', async (req: Request, res: Response) => {
@@ -616,62 +527,13 @@ app.all('/mcp', async (req: Request, res: Response) => {
     }
 
     const config = result.value;
-
-    // Cookie-based session stickiness (zero client changes)
-    // Strategy:
-    // - On any new_page/new_page_default call: create a fresh cookie session id and Set-Cookie.
-    // - On other calls: reuse cookie `mcp_session` if present.
-    // - Cache server/browser per cookie session id so parallel chats get isolated browsers.
-    const parseCookies = (cookieHeader?: string) => {
-      const out: Record<string, string> = {};
-      if (!cookieHeader) return out;
-      for (const part of cookieHeader.split(';')) {
-        const [k, v] = part.split('=');
-        if (!k) continue;
-        const key = k.trim();
-        const value = (v ?? '').trim();
-        if (key) out[key] = decodeURIComponent(value);
-      }
-      return out;
-    };
-
-    const body = req.body as any;
-    const isToolsCall = body && body.method === 'tools/call';
-    const toolName = isToolsCall ? body.params?.name : undefined;
-    const isNewPageCall = toolName === 'new_page' || toolName === 'new_page_default';
-
-    // Try to get session ID from multiple sources (for maximum compatibility):
-    // 1. mcp-session-id header (standard MCP header, sent by most clients)
-    // 2. cookie (fallback for browsers/clients that support cookies)
-    let sessionId: string | undefined = req.header('mcp-session-id') ?? undefined;
-
-    const cookies = parseCookies(req.header('cookie') ?? undefined);
-    let cookieSessionId: string | undefined = cookies['mcp_session'];
-
-    // Prefer header-based session ID (more reliable for MCP clients like Claude)
-    if (!sessionId) {
-      sessionId = cookieSessionId;
-    }
-
-    if (isNewPageCall) {
-      // Force a brand-new session for every new_page call
-      sessionId = crypto.randomUUID();
-      cookieSessionId = sessionId;
-      // Keep cookie scoped to this path; avoid Secure for local dev
-      res.setHeader('Set-Cookie', `mcp_session=${cookieSessionId}; Path=/mcp; HttpOnly; SameSite=Lax`);
-      // Also set as response header for clients that use mcp-session-id
-      res.setHeader('Mcp-Session-Id', sessionId);
-    }
-
-    cacheKey = sessionId
-      ? `${configCacheKey(config)}|cookie:${cookieSessionId}`
-      : configCacheKey(config);
+    cacheKey = configCacheKey(config);
     cacheEntry = httpServerCache.get(cacheKey);
 
     if (!cacheEntry) {
       let server: ChromeDevtoolsServer;
       try {
-        server = createServer(config);
+        server = await createServer(config);
       } catch (error) {
         res.status(400).json({
           jsonrpc: '2.0',
@@ -696,8 +558,16 @@ app.all('/mcp', async (req: Request, res: Response) => {
 
     guard = await cacheEntry.mutex.acquire();
 
+    // Be permissive for scanners: if Accept header misses text/event-stream,
+    // synthesize it so Streamable HTTP validation passes. We'll respond as JSON.
+    const accepts = req.headers['accept'];
+    if (!accepts || !accepts.includes('text/event-stream')) {
+      req.headers['accept'] = accepts ? `${accepts}, text/event-stream` : 'application/json, text/event-stream';
+    }
+
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
+      enableJsonResponse: true,
     });
 
     await cacheEntry.server.server.connect(transport);
@@ -737,7 +607,32 @@ async function main() {
     return;
   }
 
-  const server = initializeServer(parseArguments(version));
+  // Read browserbase config from environment variables
+  let bbConfig: BrowserbaseConfig | undefined;
+  if (process.env['BROWSERBASE_API_KEY']) {
+    const persistEnv = process.env['BROWSERBASE_PERSIST'];
+    const toBool = (v?: string): boolean | undefined => {
+      if (!v) return undefined;
+      const lowered = v.toLowerCase();
+      return lowered === '1' || lowered === 'true' || lowered === 'yes' || lowered === 'on';
+    };
+    bbConfig = {
+      apiKey: String(process.env['BROWSERBASE_API_KEY']),
+      projectId: process.env['BROWSERBASE_PROJECT_ID'] || undefined,
+      contextId: process.env['BROWSERBASE_CONTEXT_ID'] || undefined,
+      persist: toBool(persistEnv),
+    };
+  }
+
+  // Read browseruse config from environment variables
+  let buConfig: BrowserUseConfig | undefined;
+  if (process.env['BROWSERUSE_API_KEY']) {
+    buConfig = {
+      apiKey: String(process.env['BROWSERUSE_API_KEY']),
+    };
+  }
+
+  const server = initializeServer(parseArguments(version), bbConfig, buConfig);
   const transport = new StdioServerTransport();
   await server.server.connect(transport);
   logger('Chrome DevTools MCP Server connected');

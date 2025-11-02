@@ -57,32 +57,27 @@ startCommand:
       const bb = config.browserbase || {};
       const bu = config.browseruse || {};
 
+      const env = {
+        TRANSPORT: 'http',
+        ...(config.defaultUrl ? { MCP_DEFAULT_URL: config.defaultUrl } : {}),
+      };
+
       if (provider === 'browseruse') {
-        return {
-          command: 'node',
-          args: ['scripts/browseruse-bridge-http.mjs'],
-          env: {
-            TRANSPORT: 'http',
-            ...(config.defaultUrl ? { MCP_DEFAULT_URL: config.defaultUrl } : {}),
-            ...(bu.apiKey ? { BROWSERUSE_API_KEY: bu.apiKey } : {}),
-            ...(bu.mcpCli ? { BROWSERUSE_MCP_CLI: bu.mcpCli } : {}),
-          },
-        };
+        // BrowserUse configuration
+        if (bu.apiKey) env.BROWSERUSE_API_KEY = bu.apiKey;
       } else {
-        return {
-          command: 'node',
-          args: ['scripts/browserbase-bridge-http.mjs'],
-          env: {
-            TRANSPORT: 'http',
-            ...(config.defaultUrl ? { MCP_DEFAULT_URL: config.defaultUrl } : {}),
-            ...(bb.apiKey ? { BROWSERBASE_API_KEY: bb.apiKey } : {}),
-            ...(bb.projectId ? { BROWSERBASE_PROJECT_ID: bb.projectId } : {}),
-            ...(bb.contextId ? { BROWSERBASE_CONTEXT_ID: bb.contextId } : {}),
-            ...(bb.persist !== undefined ? { BROWSERBASE_PERSIST: String(!!bb.persist) } : {}),
-            ...(bb.mcpCli ? { BROWSERBASE_MCP_CLI: bb.mcpCli } : {}),
-          },
-        };
+        // Browserbase configuration
+        if (bb.apiKey) env.BROWSERBASE_API_KEY = bb.apiKey;
+        if (bb.projectId) env.BROWSERBASE_PROJECT_ID = bb.projectId;
+        if (bb.contextId) env.BROWSERBASE_CONTEXT_ID = bb.contextId;
+        if (bb.persist !== undefined) env.BROWSERBASE_PERSIST = String(!!bb.persist);
       }
+
+      return {
+        command: 'node',
+        args: ['build/src/index.js'],
+        env,
+      };
     }
 exampleConfig:
   # Choose your provider
