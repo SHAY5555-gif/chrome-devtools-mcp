@@ -15,7 +15,7 @@ startCommand:
         description: 'Default URL to open with the new_page_default tool.'
       browserbase:
         type: object
-        description: 'Browserbase remote session settings.'
+        description: 'Browserbase remote session settings. Use either browserbase OR browseruse, not both.'
         additionalProperties: false
         properties:
           apiKey:
@@ -34,25 +34,58 @@ startCommand:
           mcpCli:
             type: string
             description: 'Optional override path to MCP entrypoint (advanced).'
+      browseruse:
+        type: object
+        description: 'BrowserUse remote session settings. Use either browserbase OR browseruse, not both.'
+        additionalProperties: false
+        properties:
+          apiKey:
+            type: string
+            description: 'BrowserUse API key.'
+          mcpCli:
+            type: string
+            description: 'Optional override path to MCP entrypoint (advanced).'
   commandFunction: |
     (config) => {
       const bb = config.browserbase || {};
-      return {
-        command: 'node',
-        args: ['scripts/browserbase-bridge-http.mjs'],
-        env: {
-          TRANSPORT: 'http',
-          ...(config.defaultUrl ? { MCP_DEFAULT_URL: config.defaultUrl } : {}),
-          ...(bb.apiKey ? { BROWSERBASE_API_KEY: bb.apiKey } : {}),
-          ...(bb.projectId ? { BROWSERBASE_PROJECT_ID: bb.projectId } : {}),
-          ...(bb.contextId ? { BROWSERBASE_CONTEXT_ID: bb.contextId } : {}),
-          ...(bb.persist !== undefined ? { BROWSERBASE_PERSIST: String(!!bb.persist) } : {}),
-          ...(bb.mcpCli ? { BROWSERBASE_MCP_CLI: bb.mcpCli } : {}),
-        },
-      };
+      const bu = config.browseruse || {};
+
+      // Determine which provider to use (browseruse takes precedence if both are set)
+      const useBrowserUse = !!bu.apiKey;
+
+      if (useBrowserUse) {
+        return {
+          command: 'node',
+          args: ['scripts/browseruse-bridge-http.mjs'],
+          env: {
+            TRANSPORT: 'http',
+            ...(config.defaultUrl ? { MCP_DEFAULT_URL: config.defaultUrl } : {}),
+            ...(bu.apiKey ? { BROWSERUSE_API_KEY: bu.apiKey } : {}),
+            ...(bu.mcpCli ? { BROWSERUSE_MCP_CLI: bu.mcpCli } : {}),
+          },
+        };
+      } else {
+        return {
+          command: 'node',
+          args: ['scripts/browserbase-bridge-http.mjs'],
+          env: {
+            TRANSPORT: 'http',
+            ...(config.defaultUrl ? { MCP_DEFAULT_URL: config.defaultUrl } : {}),
+            ...(bb.apiKey ? { BROWSERBASE_API_KEY: bb.apiKey } : {}),
+            ...(bb.projectId ? { BROWSERBASE_PROJECT_ID: bb.projectId } : {}),
+            ...(bb.contextId ? { BROWSERBASE_CONTEXT_ID: bb.contextId } : {}),
+            ...(bb.persist !== undefined ? { BROWSERBASE_PERSIST: String(!!bb.persist) } : {}),
+            ...(bb.mcpCli ? { BROWSERBASE_MCP_CLI: bb.mcpCli } : {}),
+          },
+        };
+      }
     }
-  exampleConfig:
+exampleConfig:
   defaultUrl: 'https://example.com'
+  # Option 1: Use Browserbase
   browserbase:
     # Provide apiKey and projectId via Test Profile or secret store
     persist: true
+  # Option 2: Use BrowserUse (comment out browserbase and uncomment this)
+  # browseruse:
+  #   # Provide apiKey via Test Profile or secret store
