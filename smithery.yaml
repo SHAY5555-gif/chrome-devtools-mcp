@@ -9,64 +9,67 @@ startCommand:
   configSchema:
     type: object
     additionalProperties: false
-    required: ['provider']
-    properties:
-      provider:
-        type: string
-        enum: ['browserbase', 'browseruse']
-        description: 'Choose which remote browser provider to use.'
-        default: 'browserbase'
-      defaultUrl:
-        type: string
-        description: 'Default URL to open with the new_page_default tool.'
-      browserbase:
-        type: object
-        description: 'Browserbase remote session settings (only used when provider is "browserbase").'
-        additionalProperties: false
+    oneOf:
+      - title: 'Browserbase Provider'
+        required: ['browserbase']
         properties:
-          apiKey:
+          defaultUrl:
             type: string
-            description: 'Browserbase API key.'
-          projectId:
-            type: string
-            description: 'Browserbase Project ID.'
-          contextId:
-            type: string
-            description: 'Optional persistent context id.'
-          persist:
-            type: boolean
-            description: 'Persist the Browserbase context across runs.'
-            default: true
-          mcpCli:
-            type: string
-            description: 'Optional override path to MCP entrypoint (advanced).'
-      browseruse:
-        type: object
-        description: 'BrowserUse remote session settings (only used when provider is "browseruse").'
-        additionalProperties: false
+            description: 'Default URL to open with the new_page_default tool.'
+          browserbase:
+            type: object
+            description: 'Browserbase remote session settings.'
+            additionalProperties: false
+            required: ['apiKey', 'projectId']
+            properties:
+              apiKey:
+                type: string
+                title: 'Browserbase API Key'
+                description: 'Your Browserbase API key.'
+              projectId:
+                type: string
+                title: 'Project ID'
+                description: 'Browserbase Project ID.'
+              contextId:
+                type: string
+                title: 'Context ID (Optional)'
+                description: 'Optional persistent context id.'
+              persist:
+                type: boolean
+                title: 'Persist Context'
+                description: 'Persist the Browserbase context across runs.'
+                default: true
+      - title: 'BrowserUse Provider'
+        required: ['browseruse']
         properties:
-          apiKey:
+          defaultUrl:
             type: string
-            description: 'BrowserUse API key.'
-          mcpCli:
-            type: string
-            description: 'Optional override path to MCP entrypoint (advanced).'
+            description: 'Default URL to open with the new_page_default tool.'
+          browseruse:
+            type: object
+            description: 'BrowserUse remote session settings.'
+            additionalProperties: false
+            required: ['apiKey']
+            properties:
+              apiKey:
+                type: string
+                title: 'BrowserUse API Key'
+                description: 'Your BrowserUse API key.'
   commandFunction: |
     (config) => {
-      const provider = config.provider || 'browserbase';
-      const bb = config.browserbase || {};
-      const bu = config.browseruse || {};
-
       const env = {
         TRANSPORT: 'http',
         ...(config.defaultUrl ? { MCP_DEFAULT_URL: config.defaultUrl } : {}),
       };
 
-      if (provider === 'browseruse') {
+      // Check which provider is configured (oneOf ensures only one exists)
+      if (config.browseruse) {
         // BrowserUse configuration
+        const bu = config.browseruse;
         if (bu.apiKey) env.BROWSERUSE_API_KEY = bu.apiKey;
-      } else {
+      } else if (config.browserbase) {
         // Browserbase configuration
+        const bb = config.browserbase;
         if (bb.apiKey) env.BROWSERBASE_API_KEY = bb.apiKey;
         if (bb.projectId) env.BROWSERBASE_PROJECT_ID = bb.projectId;
         if (bb.contextId) env.BROWSERBASE_CONTEXT_ID = bb.contextId;
@@ -80,15 +83,13 @@ startCommand:
       };
     }
 exampleConfig:
-  # Choose your provider
-  provider: 'browserbase'  # or 'browseruse'
+  # Option 1: Browserbase (default)
   defaultUrl: 'https://example.com'
-
-  # If provider is 'browserbase':
   browserbase:
     # Provide apiKey and projectId via Test Profile or secret store
     persist: true
 
-  # If provider is 'browseruse':
+  # Option 2: BrowserUse (uncomment to use instead)
+  # defaultUrl: 'https://example.com'
   # browseruse:
   #   # Provide apiKey via Test Profile or secret store
