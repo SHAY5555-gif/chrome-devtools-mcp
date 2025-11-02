@@ -315,6 +315,17 @@ function initializeServer(
     const currentBrowser =
       context?.browser && context.browser.connected ? context.browser : undefined;
 
+    // If browser disconnected and we had a BrowserUse session, reset to create new one
+    if (!currentBrowser && browseruseStarted) {
+      logger(`Browser disconnected, resetting BrowserUse session state to create new session`);
+      console.log(`Browser disconnected, will create new BrowserUse session`);
+      browseruseStarted = false;
+      args.browserUrl = undefined;
+      if (browseruseCleanup) {
+        void browseruseCleanup().catch(() => {});
+      }
+    }
+
     // Lazily create a BrowserUse session if configured and not yet started
     if (!args.browserUrl && browseruseConfig && !browseruseStarted) {
       try {
