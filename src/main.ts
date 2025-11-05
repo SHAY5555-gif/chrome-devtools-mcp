@@ -7,7 +7,7 @@
 import './polyfill.js';
 
 import assert from 'node:assert';
-import {createHash} from 'node:crypto';
+import crypto, {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -173,6 +173,20 @@ function readPackageJson(): {version?: string} {
 }
 
 const version = readPackageJson().version ?? 'unknown';
+
+function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+  if (!cookieHeader) {
+    return {};
+  }
+  const cookies: Record<string, string> = {};
+  for (const cookie of cookieHeader.split(';')) {
+    const [name, ...rest] = cookie.split('=');
+    if (name && rest.length > 0) {
+      cookies[name.trim()] = rest.join('=').trim();
+    }
+  }
+  return cookies;
+}
 
 function normalizeViewport(viewport?: ServerConfig['viewport']): string | undefined {
   if (!viewport) {
@@ -505,7 +519,39 @@ app.all('/mcp', async (req: Request, res: Response) => {
     }
 
     const config = result.value;
-    cacheKey = configCacheKey(config);
+
+    // Determine if this is a tools/call request and specifically a new_page call
+    const body = req.body;
+    const isToolsCall = body?.method === 'tools/call';
+    const toolName = isToolsCall ? body.params?.name : undefined;
+    const isNewPageCall = toolName === 'new_page' || toolName === 'new_page_default';
+
+    // Try to get session ID from multiple sources (for maximum compatibility):
+    // 1. mcp-session-id header (standard MCP header, sent by most clients)
+    // 2. cookie (fallback for browsers/clients that support cookies)
+    let sessionId: string | undefined = req.header('mcp-session-id') ?? undefined;
+
+    const cookies = parseCookies(req.header('cookie') ?? undefined);
+    let cookieSessionId: string | undefined = cookies['mcp_session'];
+
+    // Prefer header-based session ID (more reliable for MCP clients like Claude)
+    if (!sessionId) {
+      sessionId = cookieSessionId;
+    }
+
+    if (isNewPageCall) {
+      // Force a brand-new session for every new_page call
+      sessionId = crypto.randomUUID();
+      cookieSessionId = sessionId;
+      // Keep cookie scoped to this path; avoid Secure for local dev
+      res.setHeader('Set-Cookie', `mcp_session=${cookieSessionId}; Path=/mcp; HttpOnly; SameSite=Lax`);
+      // Also set as response header for clients that use mcp-session-id
+      res.setHeader('Mcp-Session-Id', sessionId);
+    }
+
+    cacheKey = sessionId
+      ? `${configCacheKey(config)}|session:${sessionId}`
+      : configCacheKey(config);
     cacheEntry = httpServerCache.get(cacheKey);
 
     if (!cacheEntry) {
