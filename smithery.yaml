@@ -26,14 +26,14 @@ startCommand:
             type: string
             title: 'Proxy Country Code'
             description: 'Optional proxy country code (e.g., US, GB, DE)'
-          startUrl:
-            type: string
-            title: 'Start URL'
-            description: 'Optional URL to start the browser session with'
           profileId:
             type: string
             title: 'Profile ID'
             description: 'Optional browser profile ID for persistent sessions'
+          timeout:
+            type: number
+            title: 'Timeout (minutes)'
+            description: 'Browser session timeout in minutes (default: 15)'
         required: ['apiKey']
     required: ['browseruse']
   commandFunction: |
@@ -53,11 +53,11 @@ startCommand:
       if (config.browseruse?.proxyCountryCode) {
         env.BROWSERUSE_PROXY_COUNTRY_CODE = config.browseruse.proxyCountryCode;
       }
-      if (config.browseruse?.startUrl) {
-        env.BROWSERUSE_START_URL = config.browseruse.startUrl;
-      }
       if (config.browseruse?.profileId) {
         env.BROWSERUSE_PROFILE_ID = config.browseruse.profileId;
+      }
+      if (config.browseruse?.timeout) {
+        env.BROWSERUSE_TIMEOUT = config.browseruse.timeout.toString();
       }
 
       return {
@@ -71,5 +71,5 @@ exampleConfig:
   browseruse:
     apiKey: 'bu_xxx'  # Provide via Test Profile
     # proxyCountryCode: 'US'  # Optional
-    # startUrl: 'https://example.com'  # Optional
     # profileId: 'profile_123'  # Optional
+    # timeout: 15  # Optional (minutes)
