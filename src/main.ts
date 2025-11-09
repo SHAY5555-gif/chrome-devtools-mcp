@@ -143,8 +143,8 @@ export const configSchema = z
       .object({
         apiKey: z.string().min(1, 'BrowserUse API key is required.'),
         proxyCountryCode: z.string().optional(),
-        startUrl: z.string().optional(),
         profileId: z.string().optional(),
+        timeout: z.number().optional(),
       })
       .optional(),
   })
@@ -296,8 +296,8 @@ function argsFromConfig(config: ServerConfig): CliArgs {
 type BrowserUseConfig = {
   apiKey: string;
   proxyCountryCode?: string;
-  startUrl?: string;
   profileId?: string;
+  timeout?: number;
 };
 
 function initializeServer(
@@ -477,8 +477,8 @@ async function createServer(config: ServerConfig): Promise<ChromeDevtoolsServer>
     ? {
         apiKey: config.browseruse.apiKey,
         proxyCountryCode: config.browseruse.proxyCountryCode,
-        startUrl: config.browseruse.startUrl,
         profileId: config.browseruse.profileId,
+        timeout: config.browseruse.timeout,
       }
     : undefined;
 
@@ -486,8 +486,8 @@ async function createServer(config: ServerConfig): Promise<ChromeDevtoolsServer>
     buConfig = {
       apiKey: String(process.env['BROWSERUSE_API_KEY']),
       proxyCountryCode: process.env['BROWSERUSE_PROXY_COUNTRY_CODE'],
-      startUrl: process.env['BROWSERUSE_START_URL'],
       profileId: process.env['BROWSERUSE_PROFILE_ID'],
+      timeout: process.env['BROWSERUSE_TIMEOUT'] ? parseInt(process.env['BROWSERUSE_TIMEOUT'], 10) : undefined,
     };
   }
 
@@ -637,8 +637,8 @@ async function main() {
     buConfig = {
       apiKey: String(process.env['BROWSERUSE_API_KEY']),
       proxyCountryCode: process.env['BROWSERUSE_PROXY_COUNTRY_CODE'],
-      startUrl: process.env['BROWSERUSE_START_URL'],
       profileId: process.env['BROWSERUSE_PROFILE_ID'],
+      timeout: process.env['BROWSERUSE_TIMEOUT'] ? parseInt(process.env['BROWSERUSE_TIMEOUT'], 10) : undefined,
     };
   }
 

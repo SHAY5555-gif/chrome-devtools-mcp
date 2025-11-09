@@ -9,8 +9,8 @@ const BROWSERUSE_API_BASE = 'https://api.browser-use.com/api/v2';
 export interface BrowserUseOptions {
   apiKey: string;
   proxyCountryCode?: string;
-  startUrl?: string;
   profileId?: string;
+  timeout?: number;
 }
 
 interface BrowserUseSessionResponse {
@@ -69,19 +69,21 @@ export async function createBrowserUseSession(
 ): Promise<BrowserUseSession> {
   log('Creating BrowserUse session...');
 
-  // Build request body with optional parameters
-  const requestBody: Record<string, string> = {};
+  // Build request body with all parameters
+  const requestBody: Record<string, string | number | null> = {
+    proxyCountryCode: options.proxyCountryCode || null,
+    profileId: options.profileId || '',
+    timeout: options.timeout || 15,
+  };
+
   if (options.proxyCountryCode) {
-    requestBody.proxyCountryCode = options.proxyCountryCode;
     log(`Using proxy country code: ${options.proxyCountryCode}`);
   }
-  if (options.startUrl) {
-    requestBody.startUrl = options.startUrl;
-    log(`Starting with URL: ${options.startUrl}`);
-  }
   if (options.profileId) {
-    requestBody.profileId = options.profileId;
     log(`Using profile ID: ${options.profileId}`);
+  }
+  if (options.timeout) {
+    log(`Browser timeout: ${options.timeout} minutes`);
   }
 
   const session = await browserUseRequest<BrowserUseSessionResponse>(
