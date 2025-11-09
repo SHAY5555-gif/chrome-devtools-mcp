@@ -30,6 +30,7 @@ export interface ConnectOrLaunchOptions {
   log: (message: string) => void;
   connectExisting?: typeof ensureBrowserConnected;
   launchBrowser?: typeof ensureBrowserLaunched;
+  userDataDir?: string;
 }
 
 export function isRecoverableBrowserConnectError(error: unknown): boolean {
@@ -133,6 +134,7 @@ export async function connectOrLaunchBrowser(
       args: options.chromeArgs,
       acceptInsecureCerts: options.acceptInsecureCerts,
       devtools: options.devtools,
+      userDataDir: options.userDataDir,
     });
   }
 

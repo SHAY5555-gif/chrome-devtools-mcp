@@ -94,6 +94,11 @@ export const cliOptions = {
     describe:
       'Additional arguments for Chrome. Only applies when Chrome is launched by chrome-devtools-mcp.',
   },
+  userDataDir: {
+    type: 'string',
+    describe:
+      'Path to a custom user data directory. Use this to connect to your regular Chrome profile with all extensions and settings.',
+  },
 } satisfies Record<string, YargsOptions>;
 
 export function parseArguments(version: string, argv = process.argv) {

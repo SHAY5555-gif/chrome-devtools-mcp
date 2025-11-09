@@ -361,6 +361,7 @@ function initializeServer(
       devtools,
       currentBrowser,
       log: logger,
+      userDataDir: args.userDataDir,
     });
 
     if (!context || context.browser !== browser) {
