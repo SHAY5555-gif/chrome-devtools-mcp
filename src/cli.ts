@@ -8,6 +8,60 @@ import type {YargsOptions} from './third_party/index.js';
 import {yargs, hideBin} from './third_party/index.js';
 
 export const cliOptions = {
+  browserUseCloud: {
+    type: 'boolean',
+    description:
+      'Connect to Browser Use Cloud instead of a local browser. Requires BROWSER_USE_API_KEY environment variable or --browserUseApiKey flag.',
+    default: false,
+    conflicts: [
+      'browserUrl',
+      'wsEndpoint',
+      'autoConnect',
+      'executablePath',
+      'isolated',
+    ],
+  },
+  browserUseApiKey: {
+    type: 'string',
+    description:
+      'API key for Browser Use Cloud. Can also be set via BROWSER_USE_API_KEY environment variable.',
+    implies: 'browserUseCloud',
+  },
+  browserUseTimeout: {
+    type: 'number',
+    description:
+      'Session timeout in minutes for Browser Use Cloud (default: 15).',
+    default: 15,
+    implies: 'browserUseCloud',
+  },
+  browserUseWidth: {
+    type: 'number',
+    description: 'Browser screen width for Browser Use Cloud session.',
+    implies: 'browserUseCloud',
+  },
+  browserUseHeight: {
+    type: 'number',
+    description: 'Browser screen height for Browser Use Cloud session.',
+    implies: 'browserUseCloud',
+  },
+  browserUseProxy: {
+    type: 'string',
+    description:
+      'Proxy country code for Browser Use Cloud (e.g., "US", "DE").',
+    implies: 'browserUseCloud',
+  },
+  httpPort: {
+    type: 'number',
+    description:
+      'Run MCP server over HTTP instead of stdio. Specify the port number (e.g., 3000). This enables remote AI connections.',
+    alias: 'p',
+  },
+  httpHost: {
+    type: 'string',
+    description: 'Host to bind HTTP server to (default: 0.0.0.0).',
+    default: '0.0.0.0',
+    implies: 'httpPort',
+  },
   autoConnect: {
     type: 'boolean',
     description:
@@ -191,9 +245,20 @@ export function parseArguments(version: string, argv = process.argv) {
         !args.channel &&
         !args.browserUrl &&
         !args.wsEndpoint &&
-        !args.executablePath
+        !args.executablePath &&
+        !args.browserUseCloud
       ) {
         args.channel = 'stable';
+      }
+      // Validate Browser Use Cloud API key
+      if (args.browserUseCloud) {
+        const apiKey =
+          args.browserUseApiKey || process.env.BROWSER_USE_API_KEY;
+        if (!apiKey) {
+          throw new Error(
+            'Browser Use Cloud requires an API key. Set BROWSER_USE_API_KEY environment variable or use --browserUseApiKey flag.',
+          );
+        }
       }
       return true;
     })
@@ -241,6 +306,26 @@ export function parseArguments(version: string, argv = process.argv) {
       [
         '$0 --auto-connect --channel=canary',
         'Connect to a canary Chrome instance (Chrome 145+) running instead of launching a new instance',
+      ],
+      [
+        '$0 --browser-use-cloud',
+        'Connect to Browser Use Cloud (requires BROWSER_USE_API_KEY env var)',
+      ],
+      [
+        '$0 --browser-use-cloud --browser-use-width 1920 --browser-use-height 1080',
+        'Connect to Browser Use Cloud with custom viewport',
+      ],
+      [
+        '$0 --browser-use-cloud --browser-use-proxy US',
+        'Connect to Browser Use Cloud with US proxy',
+      ],
+      [
+        '$0 --http-port 3000',
+        'Run MCP server over HTTP on port 3000 (for remote AI connections)',
+      ],
+      [
+        '$0 --browser-use-cloud --http-port 3000',
+        'Connect to Browser Use Cloud and expose MCP over HTTP',
       ],
     ]);
 

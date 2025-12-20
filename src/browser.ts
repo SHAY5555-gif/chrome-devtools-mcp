@@ -8,6 +8,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import {
+  BrowserUseCloud,
+  type CreateSessionOptions,
+} from './BrowserUseCloud.js';
 import {logger} from './logger.js';
 import type {
   Browser,
@@ -18,6 +22,7 @@ import type {
 import {puppeteer} from './third_party/index.js';
 
 let browser: Browser | undefined;
+let browserUseClient: BrowserUseCloud | undefined;
 
 function makeTargetFilter() {
   const ignoredPrefixes = new Set([
@@ -239,3 +244,93 @@ export async function ensureBrowserLaunched(
 }
 
 export type Channel = 'stable' | 'canary' | 'beta' | 'dev';
+
+export interface BrowserUseCloudOptions {
+  apiKey: string;
+  sessionOptions?: CreateSessionOptions;
+  devtools: boolean;
+}
+
+/**
+ * Connects to a browser session in Browser Use Cloud.
+ * Creates a new session if one doesn't exist.
+ */
+export async function ensureBrowserUseCloudConnected(
+  options: BrowserUseCloudOptions,
+): Promise<Browser> {
+  if (browser?.connected) {
+    return browser;
+  }
+
+  // Initialize the Browser Use Cloud client if needed
+  if (!browserUseClient) {
+    browserUseClient = new BrowserUseCloud(options.apiKey);
+  }
+
+  // Check if we have an active session, if not create one
+  let session = browserUseClient.getCurrentSession();
+  if (!session || session.status !== 'active') {
+    session = await browserUseClient.createSession(options.sessionOptions);
+  }
+
+  const cdpUrl = session.cdpUrl;
+  if (!cdpUrl) {
+    throw new Error('Browser Use Cloud session does not have a CDP URL');
+  }
+
+  // Fetch /json/version to get the actual WebSocket URL
+  logger(`Fetching WebSocket URL from ${cdpUrl}/json/version`);
+  const versionResponse = await fetch(`${cdpUrl}/json/version`);
+  if (!versionResponse.ok) {
+    throw new Error(
+      `Failed to get WebSocket URL from Browser Use Cloud: ${versionResponse.status}`,
+    );
+  }
+  const versionData = (await versionResponse.json()) as {
+    webSocketDebuggerUrl: string;
+  };
+  const wsUrl = versionData.webSocketDebuggerUrl;
+  if (!wsUrl) {
+    throw new Error('Browser Use Cloud did not return webSocketDebuggerUrl');
+  }
+
+  logger(`Connecting to Browser Use Cloud at ${wsUrl}`);
+  console.error(`Live view URL: ${session.liveUrl}`);
+
+  const connectOptions: Parameters<typeof puppeteer.connect>[0] = {
+    browserWSEndpoint: wsUrl,
+    targetFilter: makeTargetFilter(),
+    defaultViewport: null,
+    handleDevToolsAsPage: true,
+  };
+
+  try {
+    browser = await puppeteer.connect(connectOptions);
+  } catch (err) {
+    throw new Error(
+      `Could not connect to Browser Use Cloud. Session ID: ${session.id}`,
+      {
+        cause: err,
+      },
+    );
+  }
+
+  logger('Connected to Browser Use Cloud');
+  return browser;
+}
+
+/**
+ * Gets the current Browser Use Cloud client instance
+ */
+export function getBrowserUseClient(): BrowserUseCloud | undefined {
+  return browserUseClient;
+}
+
+/**
+ * Stops the current Browser Use Cloud session
+ */
+export async function stopBrowserUseSession(): Promise<void> {
+  if (browserUseClient) {
+    await browserUseClient.stopSession();
+  }
+}
