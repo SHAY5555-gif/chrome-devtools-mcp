@@ -71,18 +71,29 @@ async function getContext(): Promise<McpContext> {
 
   let browser;
 
-  if (args.browserUseCloud) {
+  // Check for Browser Use Cloud config (from CLI args OR environment variables set by Smithery)
+  const browserUseApiKey = args.browserUseApiKey || process.env.BROWSER_USE_API_KEY;
+  const useBrowserUseCloud = args.browserUseCloud || !!browserUseApiKey;
+
+  if (useBrowserUseCloud) {
     // Connect to Browser Use Cloud
-    const apiKey =
-      args.browserUseApiKey || process.env.BROWSER_USE_API_KEY || '';
+    const apiKey = browserUseApiKey || '';
+    const timeout = args.browserUseTimeout ||
+      (process.env.BROWSER_USE_TIMEOUT ? parseInt(process.env.BROWSER_USE_TIMEOUT, 10) : 15);
+    const width = args.browserUseWidth ||
+      (process.env.BROWSER_USE_WIDTH ? parseInt(process.env.BROWSER_USE_WIDTH, 10) : undefined);
+    const height = args.browserUseHeight ||
+      (process.env.BROWSER_USE_HEIGHT ? parseInt(process.env.BROWSER_USE_HEIGHT, 10) : undefined);
+    const proxy = args.browserUseProxy || process.env.BROWSER_USE_PROXY;
+
     browser = await ensureBrowserUseCloudConnected({
       apiKey,
       devtools,
       sessionOptions: {
-        timeout: args.browserUseTimeout,
-        browserScreenWidth: args.browserUseWidth,
-        browserScreenHeight: args.browserUseHeight,
-        proxyCountryCode: args.browserUseProxy,
+        timeout,
+        browserScreenWidth: width,
+        browserScreenHeight: height,
+        proxyCountryCode: proxy,
       },
     });
   } else if (args.browserUrl || args.wsEndpoint || args.autoConnect) {
@@ -212,9 +223,40 @@ if (args.httpPort) {
     {};
   const sseTransports: Record<string, SSEServerTransport> = {};
 
+  // Helper to extract Smithery config from query params
+  const extractSmitheryConfig = (url: URL): void => {
+    // Smithery passes config as query params (e.g., ?browserUseApiKey=xxx&browserUseTimeout=15)
+    const apiKey = url.searchParams.get('browserUseApiKey');
+    const timeout = url.searchParams.get('browserUseTimeout');
+    const width = url.searchParams.get('browserUseWidth');
+    const height = url.searchParams.get('browserUseHeight');
+    const proxy = url.searchParams.get('browserUseProxy');
+
+    // Set as environment variables if provided (for getContext to pick up)
+    if (apiKey && !process.env.BROWSER_USE_API_KEY) {
+      process.env.BROWSER_USE_API_KEY = apiKey;
+      logger('Smithery config: API key set from query params');
+    }
+    if (timeout && !process.env.BROWSER_USE_TIMEOUT) {
+      process.env.BROWSER_USE_TIMEOUT = timeout;
+    }
+    if (width && !process.env.BROWSER_USE_WIDTH) {
+      process.env.BROWSER_USE_WIDTH = width;
+    }
+    if (height && !process.env.BROWSER_USE_HEIGHT) {
+      process.env.BROWSER_USE_HEIGHT = height;
+    }
+    if (proxy && !process.env.BROWSER_USE_PROXY) {
+      process.env.BROWSER_USE_PROXY = proxy;
+    }
+  };
+
   const httpServer = createServer(
     async (req: IncomingMessage, res: ServerResponse) => {
       const url = new URL(req.url || '/', `http://${req.headers.host}`);
+
+      // Extract Smithery config from query params on first request
+      extractSmitheryConfig(url);
 
       // CORS headers for all requests
       res.setHeader('Access-Control-Allow-Origin', '*');

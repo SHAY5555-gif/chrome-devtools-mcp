@@ -1,0 +1,31 @@
+# Git
+.git
+.gitignore
+
+# Node modules (will be installed fresh)
+node_modules
+
+# Build output (will be built fresh)
+build
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Tests
+tests
+*.test.ts
+*.test.js
+
+# Docs and config
+*.md
+.eslintcache
+.prettierrc
+.github
+
+# Other
+.DS_Store
+Thumbs.db
+*.log

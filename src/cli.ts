@@ -12,7 +12,7 @@ export const cliOptions = {
     type: 'boolean',
     description:
       'Connect to Browser Use Cloud instead of a local browser. Requires BROWSER_USE_API_KEY environment variable or --browserUseApiKey flag.',
-    default: false,
+    default: process.env.BROWSER_USE_CLOUD === 'true' || !!process.env.BROWSER_USE_API_KEY,
     conflicts: [
       'browserUrl',
       'wsEndpoint',
@@ -25,42 +25,41 @@ export const cliOptions = {
     type: 'string',
     description:
       'API key for Browser Use Cloud. Can also be set via BROWSER_USE_API_KEY environment variable.',
-    implies: 'browserUseCloud',
+    default: process.env.BROWSER_USE_API_KEY,
   },
   browserUseTimeout: {
     type: 'number',
     description:
       'Session timeout in minutes for Browser Use Cloud (default: 15).',
-    default: 15,
-    implies: 'browserUseCloud',
+    default: process.env.BROWSER_USE_TIMEOUT ? parseInt(process.env.BROWSER_USE_TIMEOUT, 10) : 15,
   },
   browserUseWidth: {
     type: 'number',
     description: 'Browser screen width for Browser Use Cloud session.',
-    implies: 'browserUseCloud',
+    default: process.env.BROWSER_USE_WIDTH ? parseInt(process.env.BROWSER_USE_WIDTH, 10) : undefined,
   },
   browserUseHeight: {
     type: 'number',
     description: 'Browser screen height for Browser Use Cloud session.',
-    implies: 'browserUseCloud',
+    default: process.env.BROWSER_USE_HEIGHT ? parseInt(process.env.BROWSER_USE_HEIGHT, 10) : undefined,
   },
   browserUseProxy: {
     type: 'string',
     description:
       'Proxy country code for Browser Use Cloud (e.g., "US", "DE").',
-    implies: 'browserUseCloud',
+    default: process.env.BROWSER_USE_PROXY,
   },
   httpPort: {
     type: 'number',
     description:
       'Run MCP server over HTTP instead of stdio. Specify the port number (e.g., 3000). This enables remote AI connections.',
     alias: 'p',
+    default: process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT, 10) : undefined,
   },
   httpHost: {
     type: 'string',
     description: 'Host to bind HTTP server to (default: 0.0.0.0).',
-    default: '0.0.0.0',
-    implies: 'httpPort',
+    default: process.env.HTTP_HOST || '0.0.0.0',
   },
   autoConnect: {
     type: 'boolean',

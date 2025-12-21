@@ -1,0 +1,36 @@
+# Dockerfile for Smithery deployment
+# Chrome DevTools MCP with Browser Use Cloud
+
+FROM node:22-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy ALL source files first (needed for prepare script)
+COPY . .
+
+# Install dependencies (prepare script will run and find all files)
+RUN npm ci
+
+# Build the project
+RUN npm run build
+
+# Note: We don't prune devDependencies because some (core-js, debug) are used at runtime
+
+# Expose the HTTP port
+EXPOSE 3000
+
+# Environment variables will be injected by Smithery
+# BROWSER_USE_API_KEY - Required
+# BROWSER_USE_TIMEOUT - Optional (default: 15)
+# BROWSER_USE_WIDTH - Optional (default: 1280)
+# BROWSER_USE_HEIGHT - Optional (default: 720)
+# BROWSER_USE_PROXY - Optional
+# HTTP_PORT - Optional (default: 3000)
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "fetch('http://localhost:' + (process.env.HTTP_PORT || 3000) + '/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+
+# Start the server
+CMD ["node", "build/src/index.js"]

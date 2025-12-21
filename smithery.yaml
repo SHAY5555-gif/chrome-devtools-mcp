@@ -1,0 +1,50 @@
+# Smithery Configuration for Chrome DevTools MCP with Browser Use Cloud
+# Uses custom container runtime because chrome-devtools-frontend requires special bundling
+
+runtime: "container"
+
+# Build configuration
+build:
+  dockerfile: "Dockerfile.smithery"
+  context: "."
+
+# Server configuration - HTTP transport
+startCommand:
+  type: http
+  port: 3000
+  path: /mcp
+  configSchema:
+    type: object
+    required:
+      - browserUseApiKey
+    properties:
+      browserUseApiKey:
+        type: string
+        title: "Browser Use API Key"
+        description: "Your Browser Use Cloud API key. Get one at https://browser-use.com"
+        format: password
+      browserUseTimeout:
+        type: integer
+        title: "Session Timeout (minutes)"
+        description: "Browser session timeout in minutes"
+        default: 15
+        minimum: 1
+        maximum: 60
+      browserUseWidth:
+        type: integer
+        title: "Browser Width (pixels)"
+        description: "Browser viewport width"
+        default: 1280
+        minimum: 800
+        maximum: 3840
+      browserUseHeight:
+        type: integer
+        title: "Browser Height (pixels)"
+        description: "Browser viewport height"
+        default: 720
+        minimum: 600
+        maximum: 2160
+      browserUseProxy:
+        type: string
+        title: "Proxy Country Code"
+        description: "Country code for proxy (e.g., US, DE, GB). Leave empty for no proxy."

@@ -5,6 +5,7 @@
   "type": "module",
   "bin": "./build/src/index.js",
   "main": "index.js",
+  "module": "src/smithery.ts",
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('build', {recursive: true, force: true})\"",
     "bundle": "npm run clean && npm run build && rollup -c rollup.config.mjs && node -e \"require('fs').rmSync('build/node_modules', {recursive: true, force: true})\"",
@@ -72,5 +73,9 @@
   },
   "engines": {
     "node": "^20.19.0 || ^22.12.0 || >=23"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.24.3",
+    "zod": "^3.24.0"
   }
 }
