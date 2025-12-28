@@ -229,8 +229,22 @@ The server is configured with:
 | Variable | Value | Description |
 |----------|-------|-------------|
 | `PORT` | Auto-set by Railway | HTTP port |
-| `--httpHost` | `0.0.0.0` | Bind to all interfaces |
-| `--headless` | `true` | Run Chrome in headless mode |
+| `BROWSER_USE_API_KEY` | **REQUIRED** | Browser Use Cloud API key (get from https://browseruse.com) |
+
+### Setting Environment Variables in Railway
+
+1. Go to your Railway project dashboard
+2. Navigate to **Variables** tab
+3. Click **New Variable**
+4. Add `BROWSER_USE_API_KEY` with your API key from Browser Use Cloud
+5. The server will automatically use Browser Use Cloud instead of local Chrome
+
+### CLI Arguments
+
+The server runs with these command-line arguments:
+- `--httpPort $PORT` - HTTP port (set by Railway)
+- `--httpHost 0.0.0.0` - Bind to all interfaces
+- `--browserUseCloud` - Use Browser Use Cloud instead of local Chrome
 
 ---
 
