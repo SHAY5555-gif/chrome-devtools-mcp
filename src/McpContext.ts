@@ -110,7 +110,7 @@ export class McpContext implements Context {
           collect(event);
         });
         page.on('pageerror', event => {
-          collect(event);
+          collect(event as Error);
         });
       },
     );

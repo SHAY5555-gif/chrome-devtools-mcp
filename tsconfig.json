@@ -25,7 +25,6 @@
   },
   "include": [
     "src/**/*.ts",
-    "tests/**/*.ts",
     "node_modules/chrome-devtools-frontend/front_end/legacy/legacy-defs.d.ts",
     "node_modules/chrome-devtools-frontend/front_end/models/trace",
     "node_modules/chrome-devtools-frontend/front_end/models/logs",

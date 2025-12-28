@@ -30,7 +30,11 @@ function isInitializeRequest(body: unknown): boolean {
 }
 
 import type {Channel} from './browser.js';
-import {ensureBrowserConnected, ensureBrowserLaunched} from './browser.js';
+import {
+  ensureBrowserConnected,
+  ensureBrowserLaunched,
+  ensureBrowserUseCloudConnected,
+} from './browser.js';
 import {parseArguments} from './cli.js';
 import {logger, saveLogsToFile} from './logger.js';
 import {McpContext} from './McpContext.js';
@@ -87,19 +91,38 @@ async function getContext(): Promise<McpContext> {
   if (args.proxyServer) {
     extraArgs.push(`--proxy-server=${args.proxyServer}`);
   }
-  const browser = args.browserUrl
-    ? await ensureBrowserConnected(args.browserUrl)
-    : await ensureBrowserLaunched({
-        headless: args.headless,
-        executablePath: args.executablePath,
-        customDevTools: args.customDevtools,
-        channel: args.channel as Channel,
-        isolated: args.isolated,
-        logFile,
-        viewport: args.viewport,
-        args: extraArgs,
-        acceptInsecureCerts: args.acceptInsecureCerts,
-      });
+
+  let browser;
+
+  if (args.browserUseCloud) {
+    // Connect to Browser Use Cloud
+    const apiKey =
+      args.browserUseApiKey || process.env.BROWSER_USE_API_KEY || '';
+    browser = await ensureBrowserUseCloudConnected({
+      apiKey,
+      devtools: args.experimentalDevtools ?? false,
+      sessionOptions: {
+        timeout: args.browserUseTimeout,
+        browserScreenWidth: args.browserUseWidth,
+        browserScreenHeight: args.browserUseHeight,
+        proxyCountryCode: args.browserUseProxy,
+      },
+    });
+  } else if (args.browserUrl) {
+    browser = await ensureBrowserConnected(args.browserUrl);
+  } else {
+    browser = await ensureBrowserLaunched({
+      headless: args.headless,
+      executablePath: args.executablePath,
+      customDevTools: args.customDevtools,
+      channel: args.channel as Channel,
+      isolated: args.isolated,
+      logFile,
+      viewport: args.viewport,
+      args: extraArgs,
+      acceptInsecureCerts: args.acceptInsecureCerts,
+    });
+  }
 
   if (context?.browser !== browser) {
     context = await McpContext.from(browser, logger);

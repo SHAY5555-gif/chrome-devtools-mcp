@@ -50,6 +50,11 @@ export const cliOptions = {
     conflicts: 'browserUrl',
     alias: 'd',
   },
+  experimentalDevtools: {
+    type: 'boolean',
+    description: 'Whether to enable automation over DevTools targets',
+    hidden: true,
+  },
   channel: {
     type: 'string',
     description:
@@ -88,6 +93,48 @@ export const cliOptions = {
     type: 'boolean',
     description: `If enabled, ignores errors relative to self-signed and expired certificates. Use with caution.`,
   },
+  browserUseCloud: {
+    type: 'boolean',
+    description:
+      'Connect to Browser Use Cloud instead of a local browser. Requires BROWSER_USE_API_KEY environment variable or --browserUseApiKey flag.',
+    default: false,
+    conflicts: [
+      'browserUrl',
+      'wsEndpoint',
+      'autoConnect',
+      'executablePath',
+      'isolated',
+    ],
+  },
+  browserUseApiKey: {
+    type: 'string',
+    description:
+      'API key for Browser Use Cloud. Can also be set via BROWSER_USE_API_KEY environment variable.',
+    implies: 'browserUseCloud',
+  },
+  browserUseTimeout: {
+    type: 'number',
+    description:
+      'Session timeout in minutes for Browser Use Cloud (default: 15).',
+    default: 15,
+    implies: 'browserUseCloud',
+  },
+  browserUseWidth: {
+    type: 'number',
+    description: 'Browser screen width for Browser Use Cloud session.',
+    implies: 'browserUseCloud',
+  },
+  browserUseHeight: {
+    type: 'number',
+    description: 'Browser screen height for Browser Use Cloud session.',
+    implies: 'browserUseCloud',
+  },
+  browserUseProxy: {
+    type: 'string',
+    description:
+      'Proxy country code for Browser Use Cloud (e.g., "US", "DE").',
+    implies: 'browserUseCloud',
+  },
   httpPort: {
     type: 'number',
     description: 'Port to run HTTP MCP server on (enables HTTP transport mode for remote AI connections).',
@@ -107,8 +154,23 @@ export function parseArguments(version: string, argv = process.argv) {
     .check(args => {
       // We can't set default in the options else
       // Yargs will complain
-      if (!args.channel && !args.browserUrl && !args.executablePath) {
+      if (
+        !args.channel &&
+        !args.browserUrl &&
+        !args.executablePath &&
+        !args.browserUseCloud
+      ) {
         args.channel = 'stable';
+      }
+      // Validate Browser Use Cloud API key
+      if (args.browserUseCloud) {
+        const apiKey =
+          args.browserUseApiKey || process.env.BROWSER_USE_API_KEY;
+        if (!apiKey) {
+          throw new Error(
+            'Browser Use Cloud requires an API key. Set BROWSER_USE_API_KEY environment variable or use --browserUseApiKey flag.',
+          );
+        }
       }
       return true;
     })
