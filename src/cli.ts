@@ -88,6 +88,16 @@ export const cliOptions = {
     type: 'boolean',
     description: `If enabled, ignores errors relative to self-signed and expired certificates. Use with caution.`,
   },
+  httpPort: {
+    type: 'number',
+    description: 'Port to run HTTP MCP server on (enables HTTP transport mode for remote AI connections).',
+    alias: 'p',
+  },
+  httpHost: {
+    type: 'string',
+    description: 'Host to bind HTTP server to (default: 0.0.0.0).',
+    default: '0.0.0.0',
+  },
 } satisfies Record<string, YargsOptions>;
 
 export function parseArguments(version: string, argv = process.argv) {
