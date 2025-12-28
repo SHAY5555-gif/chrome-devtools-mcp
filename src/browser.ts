@@ -129,7 +129,6 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
       headless,
       args,
       acceptInsecureCerts: options.acceptInsecureCerts,
-      handleDevToolsAsPage: true,
     });
     if (options.logFile) {
       // FIXME: we are probably subscribing too late to catch startup logs. We
@@ -232,7 +231,6 @@ export async function ensureBrowserUseCloudConnected(
     browserWSEndpoint: wsUrl,
     targetFilter: makeTargetFilter(),
     defaultViewport: null,
-    handleDevToolsAsPage: true,
   };
 
   try {
